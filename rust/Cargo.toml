@@ -1,0 +1,7 @@
+[workspace]
+
+members = [
+    "transforms",
+    "app",
+    "components",
+]

@@ -1,0 +1,22 @@
+[package]
+name = "corust-transforms"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[dependencies]
+# Not a direct dependency, but listed to enable the "js" feature to toggle `wasm32-unknown-unknown` support
+getrandom               = { version = "0.2", features = ["js"] }
+serde                   = { version = "1.0", features = ["derive"] } 
+serde_json              = "1.0"
+thiserror               = "1"
+wasm-bindgen            = "0.2.84"
+uuid                    = { version = "1", features = ["v4", "serde"] }
+
+[features]
+# Gates any features which require target as `wasm32-unknown-unknown`
+js = []
