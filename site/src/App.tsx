@@ -14,7 +14,6 @@ import CodeMirror, {
   EditorView,
   Range,
   DecorationSet,
-  // ReactCodeMirrorRef,
   ChangeSpec,
   TransactionSpec,
   AnnotationType,
@@ -116,6 +115,7 @@ interface UserSelectionRangeColor {
   userSelectionRange: UserSelectionRange;
   // `rgb(r, g, b)` string
   rgb: string;
+  name: string;
 }
 
 interface AppProps {
@@ -150,7 +150,6 @@ function App({ userId }: AppProps) {
   const codeContainerTextRef = useRef(codeContainerText);
   const clientRef = useRef(client);
   const ws = useRef<WebSocket | null>(null);
-  // const codeMirrorRef = useRef<ReactCodeMirrorRef | null>(null);
 
   // Rust `ServerMessage` is serialized as a string
   type ServerMessage = string;
@@ -158,12 +157,6 @@ function App({ userId }: AppProps) {
   const dispatchTransaction = useCallback(
     (textUpdates: TextUpdate[]) => {
       // Convert text updates into a transaction spec to update the editor
-      // const view = codeMirrorRef.current?.view;
-      // console.debug(
-      //   "Code mirror ref at dispatch transaction: ",
-      //   codeMirrorRef.current
-      // );
-      console.debug("Testing");
       console.debug("view at dispatch transaction: ", view);
       if (view) {
         const changeSpec: ChangeSpec = textUpdates.map((textUpdate) => {
@@ -222,6 +215,11 @@ function App({ userId }: AppProps) {
             const clientResponse: ClientResponse | undefined =
               clientRef.current.handle_server_message(serverMessage);
             console.debug("Received client response: ", clientResponse);
+
+            // Always update code container. This should not change the code container if the update is an ack to a local operation.
+            updateCollabSelections(clientRef.current);
+            setCodeContainerText({ code: clientRef.current.document() });
+
             if (clientResponse) {
               const updateType: ClientResponseType =
                 clientResponse.message_type();
@@ -271,26 +269,6 @@ function App({ userId }: AppProps) {
               "Post server ws message - Bridge length (should converge to 0): ",
               clientRef.current.buffer_len()
             );
-            const cursorPositions: UserCursorPos[] =
-              clientRef.current.cursor_pos_vec();
-            const newCollabSelections: UserSelectionRange[] =
-              cursorPositions.map((userCursorPos) => {
-                const cursorPos = userCursorPos.cursor_pos();
-                const selectionRange = {
-                  from: cursorPos.from(),
-                  to: cursorPos.to(),
-                  anchor: cursorPos.anchor(),
-                  head: cursorPos.head(),
-                };
-
-                return {
-                  userId: userCursorPos.user_id(),
-                  selection: selectionRange,
-                };
-              });
-            // Always update code container. This should not change the code container if the update is an ack to a local operation.
-            setCollabSelections(newCollabSelections);
-            setCodeContainerText({ code: clientRef.current.document() });
           } catch (error) {
             if (error instanceof SyntaxError) {
               console.error("JSON Syntax Error:", error);
@@ -347,7 +325,7 @@ function App({ userId }: AppProps) {
   }, []);
   const wsSendRef = useRef(wsSend);
 
-  // Update Refs
+  // Update Refs, does not trigger rerenders
   useEffect(() => {
     cargoOutputRef.current = cargoOutput;
   }, [cargoOutput]);
@@ -363,6 +341,27 @@ function App({ userId }: AppProps) {
   useEffect(() => {
     clientRef.current = client;
   }, [client]);
+
+  const updateCollabSelections = useCallback((client: Client) => {
+    const cursorPositions: UserCursorPos[] = client.cursor_pos_vec();
+    const newCollabSelections: UserSelectionRange[] = cursorPositions.map(
+      (userCursorPos) => {
+        const cursorPos = userCursorPos.cursor_pos();
+        const selectionRange = {
+          from: cursorPos.from(),
+          to: cursorPos.to(),
+          anchor: cursorPos.anchor(),
+          head: cursorPos.head(),
+        };
+
+        return {
+          userId: userCursorPos.user_id(),
+          selection: selectionRange,
+        };
+      }
+    );
+    setCollabSelections(newCollabSelections);
+  }, []);
 
   const compileCode = useCallback(async () => {
     const headers = new Headers();
@@ -453,6 +452,8 @@ function App({ userId }: AppProps) {
           return isRemoteUpdate;
         };
 
+        // `handleEditorChange` only operates on local updates. The ws message handler
+        // handles remote updates.
         if (isRemoteUpdate(viewUpdate)) {
           console.debug(
             "Server sync triggered editor change. Not a local update."
@@ -492,10 +493,13 @@ function App({ userId }: AppProps) {
           };
           wsSend(docUpdate);
         }
+
+        // Local update updates cursor positions and code container
+        updateCollabSelections(clientRef.current);
         setCodeContainerText({ code: editorText });
       }
     },
-    [wsSend, client, remoteAnnotationType]
+    [wsSend, updateCollabSelections, client, remoteAnnotationType]
   );
 
   const isSelectionFocused = useCallback(
@@ -511,15 +515,53 @@ function App({ userId }: AppProps) {
   );
 
   const cursorDecoration = useCallback(
-    (rgb: string) =>
+    (rgb: string, name: string) =>
       Decoration.widget({
         widget: new (class extends WidgetType {
           toDOM() {
             const cursor = document.createElement("div");
+            cursor.className = "cursor";
             cursor.style.display = "inline";
             cursor.style.borderLeft = `2px solid ${rgb}`; // Simulate the cursor line
-            cursor.style.pointerEvents = "none"; // Make sure the cursor doesn't interfere with text selection
-            cursor.style.marginLeft = "-1px"; // Optional: Adjust alignment if necessary
+            // cursor.style.pointerEvents = "none"; // Make sure the cursor doesn't interfere with text selection
+            cursor.style.marginLeft = "-1px";
+            // Does not affect cursor display, but tooltip is positioned relative to this
+            cursor.style.position = "relative";
+
+            const tooltip = document.createElement("span");
+            tooltip.innerText = `${name}`;
+            tooltip.className = "tooltip";
+            tooltip.style.visibility = "hidden";
+            tooltip.style.backgroundColor = `${rgb}`;
+            tooltip.style.color = "whitesmoke";
+            tooltip.style.textAlign = "center";
+            tooltip.style.borderRadius = "4px";
+            tooltip.style.paddingLeft = "3px";
+            tooltip.style.paddingRight = "3px";
+            tooltip.style.position = "absolute";
+            tooltip.style.zIndex = "1";
+            tooltip.style.bottom = "30%";
+            tooltip.style.fontSize = "small";
+            tooltip.style.opacity = "0";
+            tooltip.style.transition =
+              "visibility 0.2s ease-in-out, opacity 0.2s ease-in-out";
+
+            // Append the tooltip to the cursor element
+            cursor.appendChild(tooltip);
+
+            // Add event listeners for hover actions
+            cursor.addEventListener("mouseenter", () => {
+              console.debug("Hovering the cursor");
+              tooltip.style.visibility = "visible";
+              tooltip.style.opacity = "1";
+            });
+
+            cursor.addEventListener("mouseleave", () => {
+              console.debug("Mouseout the cursor");
+              tooltip.style.visibility = "hidden";
+              tooltip.style.opacity = "0";
+            });
+
             return cursor;
           }
         })(),
@@ -560,9 +602,11 @@ function App({ userId }: AppProps) {
               (user) => user.user_id() === userSelectionRange.userId
             ) as UserInner;
             const rgb = user.color();
+            const name = user.username();
             return {
               userSelectionRange: userSelectionRange,
-              rgb: rgb ? rgb : "rgb(0, 0, 0)",
+              rgb: rgb,
+              name: name,
             };
           });
 
@@ -595,8 +639,9 @@ function App({ userId }: AppProps) {
       const uniqueAnchors = Array.from(userSelectionWithUniqueAnchor).map(
         (userSel) => {
           const rgb = userSel.rgb;
+          const name = userSel.name;
           const sel = userSel.userSelectionRange.selection as SelectionFocused;
-          return cursorDecoration(rgb).range(sel.anchor);
+          return cursorDecoration(rgb, name).range(sel.anchor);
         }
       );
 
@@ -638,6 +683,9 @@ function App({ userId }: AppProps) {
       combinedRanges.sort((a, b) => a.from - b.from);
       return combinedRanges;
     };
+
+    // console.debug("Collab selections: ", collabSelections);
+    console.debug("Users array: ", userArr);
 
     return ViewPlugin.fromClass(
       class {
@@ -699,15 +747,11 @@ function App({ userId }: AppProps) {
         <UserIconList userArr={userArr} selfUserId={client.user_id()} />
       </div>
       <CodeMirror
-        // ref={codeMirrorRef}
         className="editor"
         height="100%"
-        // value={codeContainerText.code}
         extensions={[rust(), extraCursorsPlugin]}
         onUpdate={handleEditorChange}
         onCreateEditor={(view, state) => {
-          console.debug("Editor created");
-          console.debug("Initial view: ", view);
           setView(view);
         }}
       />

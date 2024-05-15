@@ -3,25 +3,19 @@ use corust_components::{
     server::ServerError,
 };
 use rand::Rng;
-use random_color::{color_dictionary::ColorDictionary, Luminosity, RandomColor};
+use random_color::{color_dictionary::ColorDictionary, Color, Luminosity, RandomColor};
 use serde::{Deserialize, Serialize};
 use warp::{reject, Filter};
 
 use crate::sessions::SharedSessionMap;
 
-// Sessions currently support up to 20 unique users
-// For realistic use cases, this should be sufficient
-const NAMES: [&str; 18] = [
-    "Rustacean 2015",
-    "Rustacean 2018",
-    "Rustacean 2021",
+const NAMES: [&str; 50] = [
     "Ferris",
     "Serde",
     "Syn",
     "Quote",
     "Tokio",
     "Anyhow",
-    "Vec",
     "Chrono",
     "Fnv",
     "Crossbeam",
@@ -30,6 +24,56 @@ const NAMES: [&str; 18] = [
     "Prost",
     "Bindgen",
     "Rtrb",
+    "Rand",
+    "ProcMacro2",
+    "Warp",
+    "Hashbrown",
+    "Reqwest",
+    "Zstd",
+    "Memchr",
+    "OnceCell",
+    "LazyStatic",
+    "Indexmap",
+    "Thiserror",
+    "Memoffset",
+    "Socket2",
+    "Mio",
+    "Slab",
+    "Futures",
+    "Ahash",
+    "Tracing",
+    "PinUtils",
+    "Hyper",
+    "Tinyvec",
+    "Spin",
+    "Tempfile",
+    "Nom",
+    "Fastrand",
+    "Nix",
+    "EnvLogger",
+    "Rustix",
+    "H2",
+    "Adler",
+    "Flate2",
+    "Either",
+    "Humantime",
+    "Instant",
+    "StaticAssertions",
+    "StructOpt",
+];
+
+// When [`NAMES`] is exhausted, generate user names `Rustacean {edition}` starting from this rust edition.
+// There should almost always be enough names in [`NAMES`] to avoid this fallback.
+const RUST_FIRST_EDITION: usize = 2015;
+
+// Possible color hues to sample from (does not allow monochrome or yellow)
+const COLOR_SAMPLE: [Color; 6] = [
+    Color::Red,
+    Color::Orange,
+    Color::Green,
+    Color::Blue,
+    Color::Purple,
+    Color::Pink,
 ];
 
 #[derive(Debug)]
@@ -56,13 +100,64 @@ pub struct UserJoinResponse {
     user_id: UserId,
 }
 
-fn random_color() -> String {
-    let color = RandomColor::new()
-        .luminosity(Luminosity::Bright) // Optional
-        .alpha(1.0) // Optional
-        .dictionary(ColorDictionary::new())
-        .to_rgb_string();
-    color
+// Parse color in the format "rgb({}, {}, {})"
+fn parse_color(color: &str) -> (f64, f64, f64) {
+    let color = color.trim_start_matches("rgb(").trim_end_matches(')');
+    let parts: Vec<&str> = color.split(',').collect();
+    if parts.len() != 3 {
+        panic!("Invalid color format");
+    }
+
+    let r = parts[0].trim().parse::<f64>().expect("Invalid red value");
+    let g = parts[1].trim().parse::<f64>().expect("Invalid green value");
+    let b = parts[2].trim().parse::<f64>().expect("Invalid blue value");
+
+    (r, g, b)
+}
+
+// Calculate Euclidean distance between two rgb colors
+fn color_distance(color1: &str, color2: &str) -> f64 {
+    let (r1, g1, b1) = parse_color(color1);
+    let (r2, g2, b2) = parse_color(color2);
+
+    let dr = r1 - r2;
+    let dg = g1 - g2;
+    let db = b1 - b2;
+
+    (dr * dr + dg * dg + db * db).sqrt()
+}
+
+// Returns a random color that is most different from all existing colors as a rgb string
+fn random_color(existing_colors: Vec<&str>) -> String {
+    let colors = COLOR_SAMPLE
+        .iter()
+        .map(|hue| {
+            RandomColor::new()
+                .hue(*hue)
+                .luminosity(Luminosity::Dark) // Optional
+                .alpha(1.0) // Optional
+                .dictionary(ColorDictionary::new())
+                .to_rgb_string()
+        })
+        .collect::<Vec<String>>();
+
+    // Return generated color that is most different from all existing colors
+    let mut max_distance = 0.0;
+    let mut most_different_color = colors[0].clone();
+
+    for color in colors {
+        let distance = existing_colors
+            .iter()
+            .map(|&existing_color| color_distance(&color, existing_color))
+            .sum();
+
+        if distance > max_distance {
+            max_distance = distance;
+            most_different_color = color;
+        }
+    }
+
+    most_different_color
 }
 
 async fn handle_user_join(
@@ -78,22 +173,39 @@ async fn handle_user_join(
     let user_id = server.next_user_id();
 
     let mut rng = rand::thread_rng();
+    let num_users = server.users().len();
+    let possible_names: Vec<String> = if num_users < NAMES.len() {
+        NAMES.iter().map(|s| s.to_string()).collect()
+    } else {
+        let mut rustaceans = (0..num_users + 1 - NAMES.len())
+            .map(|i| format!("Rustacean {}", RUST_FIRST_EDITION + i * 3))
+            .collect::<Vec<_>>();
+        rustaceans.extend(NAMES.iter().map(|s| s.to_string()));
+        rustaceans
+    };
     let mut username_index = rng.gen_range(0..NAMES.len());
     let mut num_usernames_checked = 0;
+
     // Ensure the username is not already taken
     while server
         .users()
         .values()
-        .any(|user| user.username() == NAMES[username_index])
+        .any(|user| user.username() == possible_names[username_index])
     {
-        username_index = (username_index + 1) % NAMES.len();
+        username_index = (username_index + 1) % possible_names.len();
         num_usernames_checked += 1;
-        if num_usernames_checked >= NAMES.len() {
-            return Err(warp::reject::custom(MaxUsersError));
+        if num_usernames_checked >= possible_names.len() {
+            panic!("All possible usernames are taken - this should be unreachable");
         }
     }
-    let username = NAMES[username_index];
-    let color = random_color();
+    let username = &possible_names[username_index];
+
+    let existing_colors = server
+        .users()
+        .values()
+        .map(|user| user.color())
+        .collect::<Vec<_>>();
+    let color = random_color(existing_colors);
 
     let activity = Activity {
         active: true,
