@@ -117,8 +117,18 @@ pub fn transform_cursor_map(
 
 /// Transform a cursor position given a `TextOperation`.
 ///
-/// There is the concept of bias: an insertion at index `i`` with cursor at index `i`` could cause the cursor to move
-/// to `i + 1` (forward bias) or stay at `i` (backwards bias). This transform opts for forward bias.
+/// There is the concept of bias for the `from` (start) and `to` (end) of the cursor range. Definitions:
+/// - `from` index bias: an insertion at index `i` with cursor (from) at index `i`` could cause the cursor to move
+///   to `i + 1` (forward bias) or stay at `i` (backwards bias).
+/// - `to` index bias: when `from != to`, an insertion at index `i` with `to` at index `i` could cause `to` to
+///   increment to `i + 1` (forward bias) or stay at `i` (backwards bias)
+///
+/// This cursor transformation algorithm assumes a forward bias for `from` and a backwards bias for `to`. The effect is
+/// typing at either the start or end of a highlighted range does not expand the range. This reflects what the CodeMirror
+/// editor natively does for highlighted ranges during collaboration.
+///
+/// Reference on "forward bias"
+/// https://marijnhaverbeke.nl/blog/collaborative-editing-cm.html
 pub fn transform_cursor(
     text_operation: &TextOperation,
     cursor_pos: &CursorPos,
@@ -169,22 +179,23 @@ pub fn transform_cursor(
     // Index in previous string (only delete and retains advance), not to be confused with index into new string
     // (only insert and retains advance)
     let mut idx_old_str = 0;
-    for compount_op in text_operation.ops() {
-        match compount_op {
+    for compound_op in text_operation.ops() {
+        match compound_op {
             CompoundOp::Retain { count } => {
                 idx_old_str += count;
             }
             CompoundOp::Insert { text } => {
                 if idx_old_str <= cursor_pos.from() {
                     // Shifts entire range
-                    // `<=` because transform assumes forward bias
+                    // `<=` because transform assumes forward bias for the `from` index
                     // Insertion at the range start shifts range to the right but does not expand the range
                     new_cursor_pos_from += text.len();
                     new_cursor_pos_to += text.len();
-                } else if idx_old_str <= cursor_pos.to() {
+                } else if idx_old_str < cursor_pos.to() {
                     // Shifts only the end of the range
-                    // `<=` because transform assumes forward bias
-                    // Insertion at the end of the range shifts the end of the range to the right and expands the highlight range
+                    // `<` because transform assumes backwards bias for the end index
+                    // Insertion at the end of the range does not shift the end of the range to the right so it
+                    // does not expand the highlighted range
                     new_cursor_pos_to += text.len();
                     highlight_len += text.len();
                 } else {
@@ -279,8 +290,7 @@ mod tests {
             let expected_transformed_cursor_pos = CursorPos::new(3, 3, 3, 3);
 
             let compound_op = CompoundOp::Retain { count: 6 };
-            let text_op =
-                TextOperation::from_ops(std::iter::once(compound_op).into_iter(), None, false);
+            let text_op = TextOperation::from_ops(std::iter::once(compound_op), None, false);
             let new_cursor_pos = transform_cursor(&text_op, &starting_cursor_pos).unwrap();
             let transformed_text = text_op.apply(text).unwrap();
             assert_eq!(transformed_text, expected_transformed_text);
@@ -420,8 +430,7 @@ mod tests {
             let starting_cursor_pos = CursorPos::new(7, 7, 7, 7);
 
             let compound_op = CompoundOp::Retain { count: 6 };
-            let text_op =
-                TextOperation::from_ops(std::iter::once(compound_op).into_iter(), None, false);
+            let text_op = TextOperation::from_ops(std::iter::once(compound_op), None, false);
             let new_cursor_pos = transform_cursor(&text_op, &starting_cursor_pos);
             let transformed_text = text_op.apply(text).unwrap();
             assert_eq!(transformed_text, expected_transformed_text);
@@ -563,6 +572,33 @@ mod tests {
             let expected_transformed_cursor_pos = CursorPos::new(0, 0, 0, 0);
 
             let compound_ops = vec![CompoundOp::Delete { count: 8 }];
+            let text_op = TextOperation::from_ops(compound_ops.into_iter(), None, false);
+            let new_cursor_pos = transform_cursor(&text_op, &starting_cursor_pos).unwrap();
+            let transformed_text = text_op.apply(text).unwrap();
+            assert_eq!(transformed_text, expected_transformed_text);
+            assert_eq!(new_cursor_pos, expected_transformed_cursor_pos);
+        }
+
+        #[test]
+        fn test_insert_range_end() {
+            // An insert at the end of the highlighted range should not change the cursor range
+            // Tests backwards bias for the `to` index
+
+            // In Doc: "|Hello|"
+            let text = "Hello";
+            // Out Doc: "|Hello| World!"
+            let expected_transformed_text = "Hello World!";
+
+            let starting_cursor_pos = CursorPos::new(0, 5, 0, 5);
+            let expected_transformed_cursor_pos = CursorPos::new(0, 5, 0, 5);
+
+            let compound_ops = vec![
+                CompoundOp::Retain { count: 5 },
+                CompoundOp::Insert {
+                    text: " World!".to_string(),
+                },
+            ];
+
             let text_op = TextOperation::from_ops(compound_ops.into_iter(), None, false);
             let new_cursor_pos = transform_cursor(&text_op, &starting_cursor_pos).unwrap();
             let transformed_text = text_op.apply(text).unwrap();

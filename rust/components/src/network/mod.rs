@@ -1262,11 +1262,11 @@ mod test {
             // 3    | Ack(L1)                 | S1 - "hello|"               |
             // 4    |                         | L1/O (S1) - "hello world||" |
             // 5    | L2/O (S1) - "he|llo|"   |                             | C2/S2 -> "hello world||"
-            // 6    | S2 - "he|llo world||"   | Ack(L1)                     | C1/S3 -> "he|llo world||"
-            // 7    | Ack(L2)                 | S2 - "he|llo world||"       |
-            // 8    |                         | L2/O (S2) - "|world||"      |
-            // 9    |                         |                             | C2/S4 -> "|world||"
-            // 10   | S3 - "|world||"         | Ack(L2)                     |
+            // 6    | S2 - "he|llo| world|"   | Ack(L1)                     | C1/S3 -> "he|llo| world|" <- interesting C1, rebroadcasts range
+            // 7    | Ack(L2)                 | S2 - "he|llo| world|"       |
+            // 8    |                         | L2/O (S2) - "|world|"       |
+            // 9    |                         |                             | C2/S4 -> "|world|"
+            // 10   | S3 - "|world|"          | Ack(L2)                     |
 
             let mut network = Network::new();
             let server = Box::new(ServerNetwork::new(&mut network));
@@ -1296,12 +1296,12 @@ mod test {
             // Cursor: "he|llo|"
             let client1_edit2 = "hello";
             let client1_cursor_edit2_pos = CursorPos::new(2, 5, 2, 5);
-            // Cursor: "he|llo world||"
+            // Cursor: "he|llo| world|"
             let client1_server_sync1 = "hello world";
-            let client1_cursor_sync1_pos = CursorPos::new(2, 11, 2, 11);
-            // Cursor: "|world||"
+            let client1_cursor_sync1_pos = CursorPos::new(2, 5, 2, 5);
+            // Cursor: "|world|"
             let client1_server_sync2 = "world";
-            let client1_cursor_sync2_pos = CursorPos::new(0, 5, 0, 5);
+            let client1_cursor_sync2_pos = CursorPos::new(0, 0, 0, 0);
 
             // Client 2
             let client2_server_sync1 = "hello";
@@ -1310,9 +1310,10 @@ mod test {
             // Cursor: "hello world||"
             let client2_edit1 = "hello world";
             let client2_cursor_edit1_pos = CursorPos::new(11, 11, 11, 11);
+            let client2_edit1_c1_cursor_pos = CursorPos::new(11, 11, 11, 11);
             let client2_server_sync2 = "hello world";
             let client2_cursor_sync2_pos = client2_cursor_edit1_pos;
-            // Cursor: "|world||"
+            // Cursor: "|world|"
             let client2_edit2 = "world";
             let client2_cursor_edit2_pos = CursorPos::new(5, 5, 5, 5);
 
@@ -1475,8 +1476,7 @@ mod test {
                     .component(client2_id)
                     .unwrap()
                     .cursor_pos(client1_id),
-                // It happens that client1 and 2 after this op will bot be at the send of string
-                Some(client2_cursor_edit1_pos)
+                Some(client2_edit1_c1_cursor_pos)
             );
             assert_eq!(
                 network
@@ -1685,23 +1685,23 @@ mod test {
             // 3    | Ack(L1)
             //      | O (S1) - "|hi |"        |                             |
             // 4    |                         | L1/0 - "bye|"               | C1/S2 -> "|hi |"
-            // 5    | Ack(L2)                 | L2 - "|bye"                 | C2/S3 -> "|hi bye||"
-            // 6    | S3 - "|hi bye||"        | L3 - "good|bye"
-            // 7    |                         | S1 - "hi good|bye|"
-            // 8    |                         | L4 - "hi goo|bye|"
-            // 9    |                         | S2 - "|hi goo|bye|"
+            // 5    | Ack(L2)                 | L2 - "|bye"                 | C2/S3 -> "|hi |bye|"
+            // 6    | S3 - "|hi |bye|"        | L3 - "good|bye"
+            // 7    |                         | S1 - "hi good||bye"
+            // 8    |                         | L4 - "hi goo||bye"
+            // 9    |                         | S2 - "|hi goo||bye"
             // 10   |                         | Ack(L1)
-            //      |                         | O (S2) - "|hi |bye|"
-            // 11   |                                                        | C2/S4 -> "|hi |bye|"
-            // 12   | S4 - "|hi |bye|"
+            //      |                         | O (S2) - "|hi ||bye"
+            // 11   |                                                        | C2/S4 -> "|hi ||bye"
+            // 12   | S4 - "|hi ||bye"
             // 16   |                         | Ack(L2)
             //      |                         | O (S4) - "|hi |good|bye"     |
-            // 17   |                         |                              | C2/S5 -> "|hi good|bye|"
+            // 17   |                         |                              | C2/S5 -> "|hi |good|bye"
             // 18   | S5 - "|hi good|bye|"    |                              |
             // 22   |                         | Ack(L3)                      |
-            //      |                         | O (S5) - "|hi goo|bye|"      |
-            // 23                                                            | C2/S6 -> "|hi|goodbye|"
-            // 24   | S6 - "|hi goo|bye|"     | Ack(L4)                      |
+            //      |                         | O (S5) - "|hi |goo|bye"      |
+            // 23                                                            | C2/S6 -> "|hi |goo|bye"
+            // 24   | S6 - "|hi |goo|bye"     | Ack(L4)                      |
 
             let mut network = Network::new();
             let server = Box::new(ServerNetwork::new(&mut network));
@@ -1733,14 +1733,14 @@ mod test {
             let client1_cursor_edit2_pos = CursorPos::new(0, 3, 0, 3);
             // Cursor: "|hi |bye|"
             let client1_server_sync1 = "hi bye";
-            let client1_cursor_sync1_pos = CursorPos::new(0, 6, 0, 6);
-            // Cursor: "|hi |bye|"
+            let client1_cursor_sync1_pos = CursorPos::new(0, 3, 0, 3);
+            // Cursor: "|hi ||bye"
             let client1_server_sync2 = "hi bye";
-            let client1_cursor_sync2_pos = CursorPos::new(0, 6, 0, 6);
+            let client1_cursor_sync2_pos = CursorPos::new(0, 3, 0, 3);
             let client1_sync2_c2_cursor_pos = CursorPos::new(3, 3, 3, 3);
             // Cursor: "|hi |good|bye"
             let client1_server_sync3 = "hi goodbye";
-            let client1_cursor_sync3_pos = CursorPos::new(0, 10, 0, 10);
+            let client1_cursor_sync3_pos = CursorPos::new(0, 3, 0, 3);
 
             // Client 2
             // Cursor: "bye|"
@@ -1762,7 +1762,7 @@ mod test {
             // Cursor: "|hi goo|bye|"
             let client2_server_sync2 = "hi goobye";
             let client2_cursor_sync2_pos = CursorPos::new(6, 6, 6, 6);
-            let client2_sync2_c1_cursor_pos = CursorPos::new(0, 9, 0, 9);
+            let client2_sync2_c1_cursor_pos = CursorPos::new(0, 3, 0, 3);
 
             // Server
             let server_state1 = client1_edit1;
@@ -1770,16 +1770,16 @@ mod test {
             let server_state2 = client1_edit2;
             let server_state2_c1_cursor = client1_cursor_edit2_pos;
             let server_state3 = "hi bye";
-            let server_state3_c1_cursor = CursorPos::new(0, 6, 0, 6);
+            let server_state3_c1_cursor = CursorPos::new(0, 3, 0, 3);
             let server_state3_c2_cursor = CursorPos::new(6, 6, 6, 6);
             let server_state4 = "hi bye";
             let server_state4_c1_cursor = server_state3_c1_cursor;
             let server_state4_c2_cursor = CursorPos::new(3, 3, 3, 3);
             let server_state5 = "hi goodbye";
-            let server_state5_c1_cursor = CursorPos::new(0, 10, 0, 10);
+            let server_state5_c1_cursor = CursorPos::new(0, 3, 0, 3);
             let server_state5_c2_cursor = CursorPos::new(7, 7, 7, 7);
             let server_state6 = "hi goobye";
-            let server_state6_c1_cursor = CursorPos::new(0, 9, 0, 9);
+            let server_state6_c1_cursor = CursorPos::new(0, 3, 0, 3);
             let server_state6_c2_cursor = CursorPos::new(6, 6, 6, 6);
 
             let client1_event1 = LocalMessage {
@@ -3302,7 +3302,7 @@ mod test {
                 network.component(client1_id).unwrap().document(),
                 client1_edit1
             );
-            assert!(matches!(network.component(client2_id), None));
+            assert!(network.component(client2_id).is_none());
 
             // T = 1, T = 2 (C1 acks L1, no-op)
             for t in [1, 2] {
@@ -3316,7 +3316,7 @@ mod test {
                     network.component(client1_id).unwrap().document(),
                     target_text
                 );
-                assert!(matches!(network.component(client2_id), None));
+                assert!(network.component(client2_id).is_none());
             }
 
             // T = 5, client2 is created but the document is empty

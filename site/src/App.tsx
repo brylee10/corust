@@ -14,10 +14,9 @@ import CodeMirror, {
   EditorView,
   Range,
   DecorationSet,
-  ReactCodeMirrorRef,
+  // ReactCodeMirrorRef,
   ChangeSpec,
   TransactionSpec,
-  Annotation,
   AnnotationType,
 } from "@uiw/react-codemirror";
 import { rust } from "@codemirror/lang-rust";
@@ -41,8 +40,6 @@ import { Alert, Button, Fade, styled } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 
 // Define constants once
-const zeroPosition = wasm.CursorPos.new(0, 0, 0, 0);
-
 const CustomButton = styled(Button)({
   padding: "10px 20px",
   backgroundColor: "green",
@@ -146,12 +143,14 @@ function App({ userId }: AppProps) {
   // The client object should be created once per component render. It cannot be passed in as
   // a prop and modified in place, otherwise the component would be impure.
   const [client] = useState<Client>(Client.new(userId));
+  // CodeMirror view
+  const [view, setView] = useState<EditorView | undefined>(undefined);
   // Event listeners capture static state, so we need to use refs for indirection to the latest state
   const cargoOutputRef = useRef(cargoOutput);
   const codeContainerTextRef = useRef(codeContainerText);
   const clientRef = useRef(client);
   const ws = useRef<WebSocket | null>(null);
-  const codeMirrorRef = useRef<ReactCodeMirrorRef | null>(null);
+  // const codeMirrorRef = useRef<ReactCodeMirrorRef | null>(null);
 
   // Rust `ServerMessage` is serialized as a string
   type ServerMessage = string;
@@ -159,7 +158,13 @@ function App({ userId }: AppProps) {
   const dispatchTransaction = useCallback(
     (textUpdates: TextUpdate[]) => {
       // Convert text updates into a transaction spec to update the editor
-      const view = codeMirrorRef.current?.view;
+      // const view = codeMirrorRef.current?.view;
+      // console.debug(
+      //   "Code mirror ref at dispatch transaction: ",
+      //   codeMirrorRef.current
+      // );
+      console.debug("Testing");
+      console.debug("view at dispatch transaction: ", view);
       if (view) {
         const changeSpec: ChangeSpec = textUpdates.map((textUpdate) => {
           return {
@@ -177,150 +182,155 @@ function App({ userId }: AppProps) {
         view.dispatch(transactionSpec);
       }
     },
-    [codeMirrorRef, remoteAnnotationType]
+    [remoteAnnotationType, view]
   );
 
   useEffect(() => {
-    // Create WebSocket connection.
-    console.log(
-      "Trying to connect to WS with session ID: ",
-      params.sessionId,
-      " and user ID: ",
-      client.user_id()
-    );
-    const newSocket = new WebSocket(
-      `ws://127.0.0.1:8000/websocket/${params.sessionId}/${client.user_id()}`
-    );
+    // Requires a CodeMirror view for the transaction dispatch to target
+    if (view) {
+      // Create WebSocket connection.
+      console.log(
+        "Trying to connect to WS with session ID: ",
+        params.sessionId,
+        " and user ID: ",
+        client.user_id()
+      );
+      const newSocket = new WebSocket(
+        `ws://127.0.0.1:8000/websocket/${params.sessionId}/${client.user_id()}`
+      );
 
-    const controller = new AbortController();
-    const signal = controller.signal;
+      const controller = new AbortController();
+      const signal = controller.signal;
 
-    // Connection opened
-    newSocket.addEventListener(
-      "open",
-      function (event) {
-        console.log("Connected to WS Server");
-        setWsOpen(true);
-      },
-      { signal }
-    );
+      // Connection opened
+      newSocket.addEventListener(
+        "open",
+        function (event) {
+          console.debug("Connected to WS Server");
+          setWsOpen(true);
+        },
+        { signal }
+      );
 
-    // Listen for messages
-    newSocket.addEventListener(
-      "message",
-      function (event) {
-        // Decode the collaborative code update in the ws message and set it to `code`
-        try {
-          const serverMessage: ServerMessage = event.data;
-          const clientResponse: ClientResponse | undefined =
-            clientRef.current.handle_server_message(serverMessage);
-          console.log("Received client response: ", clientResponse);
-          if (clientResponse) {
-            const updateType: ClientResponseType =
-              clientResponse.message_type();
-            // Send the next buffered client operation to the server if applicable
-            // (occurs when `serverMessage` is an ack to an outstanding client operation and client has another operation buffered)
-            if (updateType === ClientResponseType.BroadcastLocalDocUpdate) {
-              console.debug("Sending buffered client operation");
-              // The doc update will be a string because the tag `updateType` is `BroadcastLocalDocUpdate`
-              const docUpdate =
-                clientResponse.get_broadcast_doc_update() as string;
-              const docUpdateWrapper: DocUpdateWrapper = {
-                inner: {
-                  docUpdate: docUpdate,
-                },
-                opState: OpState.Unsent,
-              };
-              console.assert(
-                clientRef.current.document() ===
-                  codeContainerTextRef.current.code,
-                "Client document should match code container if the update is acking a local operation\n",
-                "client doc - ",
-                clientRef.current.document(),
-                "container code - ",
-                codeContainerTextRef.current.code
-              );
-              wsSendRef.current(docUpdateWrapper);
-            } else if (updateType === ClientResponseType.UserList) {
-              console.debug("User list update");
-              const userList = clientResponse.get_user_list() as UserList;
+      // Listen for messages
+      newSocket.addEventListener(
+        "message",
+        function (event) {
+          // Decode the collaborative code update in the ws message and set it to `code`
+          try {
+            const serverMessage: ServerMessage = event.data;
+            const clientResponse: ClientResponse | undefined =
+              clientRef.current.handle_server_message(serverMessage);
+            console.debug("Received client response: ", clientResponse);
+            if (clientResponse) {
+              const updateType: ClientResponseType =
+                clientResponse.message_type();
+              // Send the next buffered client operation to the server if applicable
+              // (occurs when `serverMessage` is an ack to an outstanding client operation and client has another operation buffered)
+              if (updateType === ClientResponseType.BroadcastLocalDocUpdate) {
+                console.debug("Sending buffered client operation");
+                // The doc update will be a string because the tag `updateType` is `BroadcastLocalDocUpdate`
+                const docUpdate =
+                  clientResponse.get_broadcast_doc_update() as string;
+                const docUpdateWrapper: DocUpdateWrapper = {
+                  inner: {
+                    docUpdate: docUpdate,
+                  },
+                  opState: OpState.Unsent,
+                };
+                console.assert(
+                  clientRef.current.document() ===
+                    codeContainerTextRef.current.code,
+                  "Client document should match code container if the update is acking a local operation\n",
+                  "client doc - ",
+                  clientRef.current.document(),
+                  "container code - ",
+                  codeContainerTextRef.current.code
+                );
+                wsSendRef.current(docUpdateWrapper);
+              } else if (updateType === ClientResponseType.UserList) {
+                console.debug("User list update");
+                const userList = clientResponse.get_user_list() as UserList;
 
-              setUserArr(userList.users());
-              console.debug("UserList: " + userList.to_string());
-            } else if (updateType === ClientResponseType.RemoteDocUpdate) {
-              console.debug("Local doc update");
-              const localDocUpdate: RemoteDocUpdate =
-                clientResponse.get_remote_doc_update() as RemoteDocUpdate;
-              dispatchTransaction(localDocUpdate.text_updates());
+                setUserArr(userList.users());
+                console.debug("UserList: " + userList.to_string());
+              } else if (updateType === ClientResponseType.RemoteDocUpdate) {
+                console.debug("Local doc update");
+                const localDocUpdate: RemoteDocUpdate =
+                  clientResponse.get_remote_doc_update() as RemoteDocUpdate;
+                dispatchTransaction(localDocUpdate.text_updates());
+              } else {
+                console.error(
+                  "Unknown client response type when : ",
+                  updateType
+                );
+              }
+            }
+
+            console.debug(
+              "Post server ws message - Bridge length (should converge to 0): ",
+              clientRef.current.buffer_len()
+            );
+            const cursorPositions: UserCursorPos[] =
+              clientRef.current.cursor_pos_vec();
+            const newCollabSelections: UserSelectionRange[] =
+              cursorPositions.map((userCursorPos) => {
+                const cursorPos = userCursorPos.cursor_pos();
+                const selectionRange = {
+                  from: cursorPos.from(),
+                  to: cursorPos.to(),
+                  anchor: cursorPos.anchor(),
+                  head: cursorPos.head(),
+                };
+
+                return {
+                  userId: userCursorPos.user_id(),
+                  selection: selectionRange,
+                };
+              });
+            // Always update code container. This should not change the code container if the update is an ack to a local operation.
+            setCollabSelections(newCollabSelections);
+            setCodeContainerText({ code: clientRef.current.document() });
+          } catch (error) {
+            if (error instanceof SyntaxError) {
+              console.error("JSON Syntax Error:", error);
             } else {
-              console.error("Unknown client response type when : ", updateType);
+              console.error("Error parsing JSON:", error);
             }
           }
+        },
+        { signal }
+      );
 
-          console.debug(
-            "Post server ws message - Bridge length (should converge to 0): ",
-            clientRef.current.buffer_len()
-          );
-          const cursorPositions: UserCursorPos[] =
-            clientRef.current.cursor_pos_vec();
-          const newCollabSelections: UserSelectionRange[] = cursorPositions.map(
-            (userCursorPos) => {
-              const cursorPos = userCursorPos.cursor_pos();
-              const selectionRange = {
-                from: cursorPos.from(),
-                to: cursorPos.to(),
-                anchor: cursorPos.anchor(),
-                head: cursorPos.head(),
-              };
+      // Connection closed
+      newSocket.addEventListener(
+        "close",
+        function (event) {
+          console.log("Disconnected from WS Server");
+          setWsOpen(false);
+        },
+        { signal }
+      );
 
-              return {
-                userId: userCursorPos.user_id(),
-                selection: selectionRange,
-              };
-            }
-          );
-          // Always update code container. This should not change the code container if the update is an ack to a local operation.
-          setCollabSelections(newCollabSelections);
-          setCodeContainerText({ code: clientRef.current.document() });
-        } catch (error) {
-          if (error instanceof SyntaxError) {
-            console.error("JSON Syntax Error:", error);
-          } else {
-            console.error("Error parsing JSON:", error);
-          }
-        }
-      },
-      { signal }
-    );
+      // WS error
+      newSocket.addEventListener(
+        "error",
+        (error) => {
+          console.error("WebSocket error: ", error);
+        },
+        { signal }
+      );
 
-    // Connection closed
-    newSocket.addEventListener(
-      "close",
-      function (event) {
-        console.log("Disconnected from WS Server");
-        setWsOpen(false);
-      },
-      { signal }
-    );
+      ws.current = newSocket;
 
-    // WS error
-    newSocket.addEventListener(
-      "error",
-      (error) => {
-        console.error("WebSocket error: ", error);
-      },
-      { signal }
-    );
-
-    ws.current = newSocket;
-
-    // Clean up on unmount
-    return () => {
-      console.debug("Closing + cleaning up WS connection and event handlers");
-      newSocket?.close();
-      controller.abort();
-    };
-  }, [client, params.sessionId, dispatchTransaction]);
+      // Clean up on unmount
+      return () => {
+        console.debug("Closing + cleaning up WS connection and event handlers");
+        newSocket?.close();
+        controller.abort();
+      };
+    }
+  }, [client, params.sessionId, dispatchTransaction, view]);
 
   const wsSend = useCallback((docUpdateWrapper: DocUpdateWrapper) => {
     console.debug("Try sending ws message", ws.current, ws.current?.readyState);
@@ -381,12 +391,9 @@ function App({ userId }: AppProps) {
 
   const handleEditorChange = useCallback(
     (viewUpdate: ViewUpdate) => {
-      // console.debug("Selection set: ", viewUpdate.selectionSet);
-      // console.debug("Doc changed: ", viewUpdate.docChanged);
       // Handle cursor updates and doc updates
       if (viewUpdate.selectionSet || viewUpdate.docChanged) {
         // Log transactions for view update
-
         const textUpdates: TextUpdate[] = [];
         viewUpdate.changes.iterChanges((fromA, toA, fromB, toB, text) => {
           const prev: TextUpdateRange = TextUpdateRange.new(fromA, toA);
@@ -431,41 +438,6 @@ function App({ userId }: AppProps) {
         console.debug("Documents equal: ", client.document() === editorText);
 
         // Important: Check if the change is local or remote.
-        // // 1. If remote, the server update would have already been applied to the client,
-        // //    so document and cursor pos would match
-        // // Note: Do not use strict equality (===) for WASM types, otherwise WASM addresses will be compared.
-        // // Instead, use `to_string()` or implement `equals()` in Rust
-        // const cond1 =
-        //   client.document() === editorText &&
-        //   client.cursor_pos()?.equals(cursorPos);
-        // // 2. If the editor does not have focus, then the update cannot be local. There is an
-        // //    odd situation where CodeMirror assumes programatic setting of the editor text
-        // //    is an insert and delete of the entire document. This is fine by itself. But CodeMirror
-        // //    also assumes when the user does not focus on the editor then the selection is
-        // //    (from: 0, to: 0, anchor: 0, head: 0). The Client object does not reset the cursor position
-        // //    when focus changes. Without the hasFocus check, the cursor position could easily be different
-        // //    between the client and editor when the editor is not focused. This would incorrectly "look like"
-        // //    a local update.
-        // // Note: Known bug
-        // //    When the user first clicks into the editor sometimes the editor view is marked as not focused so the
-        // //    cursor is not broadcast. After the user clicks elsewhere or types the focus is obtained. This issue
-        // //    is "worked around" by also including a check that the cursor position is 0 to still address the above
-        // //    condition 2, so this bug only occurs when the user selects position 0 as the first click.
-        // const cond2 =
-        //   !viewUpdate.view.hasFocus &&
-        //   cursorPos.to_string() === zeroPosition.to_string();
-        // const serverSyncTriggered = cond1 || cond2;
-        // console.debug(
-        //   "Document and cursor pos have not changed (cond1): ",
-        //   cond1,
-        //   " OR View update does not have focus (cond2): ",
-        //   !viewUpdate.view.hasFocus,
-        //   " and is at zero position: ",
-        //   cursorPos.to_string() + " " + zeroPosition.to_string(),
-        //   " Focus changed: ",
-        //   viewUpdate.focusChanged
-        // );
-
         const isRemoteUpdate = (viewUpdate: ViewUpdate): boolean => {
           const isRemoteUpdate = viewUpdate.transactions.some((t) =>
             t.annotation(remoteAnnotationType)
@@ -523,7 +495,7 @@ function App({ userId }: AppProps) {
         setCodeContainerText({ code: editorText });
       }
     },
-    [wsSend, client]
+    [wsSend, client, remoteAnnotationType]
   );
 
   const isSelectionFocused = useCallback(
@@ -724,15 +696,20 @@ function App({ userId }: AppProps) {
             RUN
           </CustomButton>
         </div>
-        <UserIconList userArr={userArr} />
+        <UserIconList userArr={userArr} selfUserId={client.user_id()} />
       </div>
       <CodeMirror
-        ref={codeMirrorRef}
+        // ref={codeMirrorRef}
         className="editor"
         height="100%"
         // value={codeContainerText.code}
         extensions={[rust(), extraCursorsPlugin]}
         onUpdate={handleEditorChange}
+        onCreateEditor={(view, state) => {
+          console.debug("Editor created");
+          console.debug("Initial view: ", view);
+          setView(view);
+        }}
       />
       {!wsOpen ? (
         <Alert severity="error">
