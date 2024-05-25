@@ -3,5 +3,6 @@
 members = [
     "transforms",
     "app",
-    "components",
+    "components", 
+    "sandbox",
 ]
