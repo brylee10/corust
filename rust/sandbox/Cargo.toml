@@ -17,3 +17,7 @@ snafu                   = "0.8"
 serde                   = { version = "1.0", features = ["derive"] } 
 tokio                   = { version = "1", features = ["full"] }
 tokio-stream            = "0.1"
+
+[dev-dependencies]
+assertables             = "7.0"
+tempfile                = "3.0"

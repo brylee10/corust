@@ -5,14 +5,15 @@ use corust_sandbox::container::{
     ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse, TargetType,
     IO_COMPONENT_CHANNEL_SIZE,
 };
+use corust_sandbox::init_logger;
 use corust_sandbox::runner::{
     create_runner_io_component, JoinTaskSnafu, ReadStdoutSnafu, Result, RunnerError,
     RunnerIoComponent, SendResponseSnafu, SpawnChildSnafu, StderrCaptureSnafu, StdoutCaptureSnafu,
     WaitChildSnafu, WriteCodeSnafu,
 };
+use env_logger::Target;
 use snafu::{OptionExt, ResultExt};
 use std::fs;
-use std::io::Write;
 use std::path::Path;
 use std::sync::Arc;
 use std::{env, process::Stdio};
@@ -127,6 +128,11 @@ async fn handle_execute_cmd<P: AsRef<Path>>(
     // Runs `cargo [command]` in the project directory inside a sandboxed Docker container
     let mut cmd: Command = cargo_command.into();
     cmd.current_dir(project_dir);
+    log::debug!(
+        "Executing command: {:?} in project dir {:?}",
+        cmd,
+        project_dir
+    );
 
     let mut child = cmd
         .stdout(Stdio::piped())
@@ -228,19 +234,7 @@ async fn handle_execute_cmd<P: AsRef<Path>>(
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize env logger, writes to stderr
-    env_logger::builder()
-        .format(|buf, record| {
-            writeln!(
-                buf,
-                "[{} {}:{}] {}",
-                record.level(),
-                record.file().unwrap_or("unknown"),
-                record.line().unwrap_or(0),
-                record.args()
-            )
-        })
-        .init();
-
+    init_logger(Target::Stderr);
     let project_dir = env::args_os()
         .nth(1)
         .expect("Please specify Rust project directory as the first argument");
@@ -251,7 +245,15 @@ async fn main() -> Result<()> {
     let (stdin_tx, stdin_rx) = mpsc::channel(IO_COMPONENT_CHANNEL_SIZE);
     let runner_io_component = create_runner_io_component(stdin_tx, stdout_rx)?;
 
-    listen(project_dir, runner_io_component, stdin_rx, stdout_tx).await?;
-    log::debug!("Finished listening for messages");
-    std::process::exit(0);
+    let res = listen(project_dir, runner_io_component, stdin_rx, stdout_tx).await;
+    match res {
+        Ok(()) => {
+            log::debug!("Finished listening for messages");
+            std::process::exit(0);
+        }
+        Err(e) => {
+            log::error!("Error listening for messages: {:?}", e);
+            std::process::exit(1);
+        }
+    }
 }

@@ -90,7 +90,7 @@ impl From<CargoCommand> for Command {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ExecuteCommand {
     pub code: String,
     pub target_type: TargetType,
@@ -107,7 +107,7 @@ impl ExecuteCommand {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ContainerMessage {
     Execute(ExecuteCommand),
 }
@@ -140,90 +140,111 @@ impl Display for ContainerResponse {
     }
 }
 
-fn sandboxed_docker_command() -> Command {
-    let mut cmd = Command::new("docker");
-    cmd.arg("run")
-        // Drop all capabilities
-        // https://man7.org/linux/man-pages/man7/capabilities.7.html
-        .arg("--cap-drop")
-        .arg("ALL")
-        // Disable network access, only loopback is allowed
-        // https://docs.docker.com/network/drivers/none/
-        .arg("--network")
-        .arg("none")
-        .arg("--memory")
-        .arg("512m")
-        // Allow some memory to be swapped to disk
-        // https://docs.docker.com/config/containers/resource_constraints/#--memory-swap-details
-        .arg("--memory-swap")
-        .arg("512m")
-        .arg("--pids-limit")
-        .arg("128")
-        // OOM kill priority for this container set to highest
-        .arg("--oom-score-adj")
-        .arg("1000");
-    // Other defaults:
-    // - `cpu-shares`: default is equal relative weight among all containers (value 1024 for each)
-    // - `privileged`: default is false, does not give extended privileges to this container
+/// A backend run creates a [`tokio::process::Command`] and runs it,
+/// providing handles to the IO file handles.
+pub trait Backend {
+    fn prepare_command(&self) -> Command;
 
-    cmd
+    // Starts `runner` process which asynchronously waits for messages via stdin
+    fn start_runner_in_background(&self) -> Result<RunContainerResult> {
+        let mut cmd = self.prepare_command();
+        log::debug!("Running command: {:?}", cmd);
+
+        let mut child = cmd
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .context(SpawnChildSnafu {})?;
+
+        // https://docs.rs/tokio/latest/tokio/process/struct.Child.html#fields
+        let stdin = child.stdin.take().context(StdinCaptureSnafu)?;
+        let stdout = child.stdout.take().context(StdoutCaptureSnafu)?;
+        let stderr = child.stderr.take().context(StderrCaptureSnafu)?;
+
+        let run_container_result = RunContainerResult {
+            child,
+            stdin,
+            stdout,
+            stderr,
+        };
+
+        Ok(run_container_result)
+    }
 }
 
-fn container_name() -> String {
-    let date_now = Utc::now();
-    // unwrap: date time from Utc::now() is not out of range
-    let date_now_formatted = format!("{}", date_now.format("%Y%m%d-%H%M%S-%f"));
-    format!("corust-{}-{}", date_now_formatted, rand::random::<u32>())
+#[derive(Default)]
+pub struct DockerBackend {}
+
+impl DockerBackend {
+    pub fn new() -> Self {
+        DockerBackend {}
+    }
 }
 
-fn prepare_command() -> Command {
-    let mut cmd = sandboxed_docker_command();
-    let container_name = container_name();
-    let image_name = "corust";
+impl Backend for DockerBackend {
+    fn prepare_command(&self) -> Command {
+        let mut cmd = docker_utils::sandboxed_docker_command();
+        let container_name = docker_utils::container_name();
+        let image_name = "corust";
 
-    cmd.args(["-a", "stdin", "-a", "stdout", "-a", "stderr"])
-        // Keep stdin open
-        .arg("-i")
-        .arg("--name")
-        .arg(&container_name)
-        .arg("--rm")
-        .arg(image_name);
-    cmd
+        cmd.args(["-a", "stdin", "-a", "stdout", "-a", "stderr"])
+            // Keep stdin open
+            .arg("-i")
+            .arg("--name")
+            .arg(&container_name)
+            .arg("--rm")
+            .arg(image_name);
+        cmd.arg("runner").arg("/corust");
+        cmd
+    }
 }
 
-struct RunContainerResult {
+mod docker_utils {
+    use super::*;
+
+    pub fn sandboxed_docker_command() -> Command {
+        let mut cmd = Command::new("docker");
+        cmd.arg("run")
+            // Drop all capabilities
+            // https://man7.org/linux/man-pages/man7/capabilities.7.html
+            .arg("--cap-drop")
+            .arg("ALL")
+            // Disable network access, only loopback is allowed
+            // https://docs.docker.com/network/drivers/none/
+            .arg("--network")
+            .arg("none")
+            .arg("--memory")
+            .arg("512m")
+            // Allow some memory to be swapped to disk
+            // https://docs.docker.com/config/containers/resource_constraints/#--memory-swap-details
+            .arg("--memory-swap")
+            .arg("512m")
+            .arg("--pids-limit")
+            .arg("128")
+            // OOM kill priority for this container set to highest
+            .arg("--oom-score-adj")
+            .arg("1000");
+        // Other defaults:
+        // - `cpu-shares`: default is equal relative weight among all containers (value 1024 for each)
+        // - `privileged`: default is false, does not give extended privileges to this container
+
+        cmd
+    }
+
+    pub fn container_name() -> String {
+        let date_now = Utc::now();
+        // unwrap: date time from Utc::now() is not out of range
+        let date_now_formatted = format!("{}", date_now.format("%Y%m%d-%H%M%S-%f"));
+        format!("corust-{}-{}", date_now_formatted, rand::random::<u32>())
+    }
+}
+
+pub struct RunContainerResult {
     child: Child,
     stdin: ChildStdin,
     stdout: ChildStdout,
     stderr: ChildStderr,
-}
-
-// Starts `runner` process which asynchronously waits for messages via stdin
-fn start_runner_in_background() -> Result<RunContainerResult> {
-    let mut cmd = prepare_command();
-    cmd.arg("runner").arg("/corust");
-    log::debug!("Running command: {:?}", cmd);
-
-    let mut child = cmd
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .context(SpawnChildSnafu {})?;
-
-    // https://docs.rs/tokio/latest/tokio/process/struct.Child.html#fields
-    let stdin = child.stdin.take().context(StdinCaptureSnafu)?;
-    let stdout = child.stdout.take().context(StdoutCaptureSnafu)?;
-    let stderr = child.stderr.take().context(StderrCaptureSnafu)?;
-
-    let run_container_result = RunContainerResult {
-        child,
-        stdin,
-        stdout,
-        stderr,
-    };
-
-    Ok(run_container_result)
 }
 
 pub struct ContainerFactory {
@@ -238,12 +259,13 @@ impl ContainerFactory {
         }
     }
 
-    pub async fn create_container(&self) -> Result<Container> {
+    /// A container factory can generate containers with any backend.
+    pub async fn create_container<B: Backend>(&self, backend: B) -> Result<Container<B>> {
         let run_container_permit = Arc::clone(&self.semaphore)
             .acquire_owned()
             .await
             .context(AcquireSemaphoreSnafu)?;
-        Ok(Container::new(run_container_permit))
+        Ok(Container::new(run_container_permit, backend))
     }
 }
 
@@ -254,19 +276,21 @@ enum ContainerState {
 }
 
 // Runs a docker container and passes messages to the container via stdin
-pub struct Container {
+pub struct Container<B> {
     // The container can be in multiple states at once
     _states: EnumSet<ContainerState>,
     is_executing: AtomicBool,
     _run_permit: OwnedSemaphorePermit,
+    backend: B,
 }
 
-impl Container {
-    fn new(run_permit: OwnedSemaphorePermit) -> Self {
+impl<B: Backend> Container<B> {
+    fn new(run_permit: OwnedSemaphorePermit, backend: B) -> Self {
         Container {
             _states: EnumSet::new(),
             is_executing: AtomicBool::new(false),
             _run_permit: run_permit,
+            backend,
         }
     }
 
@@ -282,7 +306,7 @@ impl Container {
         }
 
         // Run a docker container, returning the container stdin, stdout, and stderr
-        let run_container = start_runner_in_background()?;
+        let run_container = self.backend.start_runner_in_background()?;
         let RunContainerResult {
             stdin,
             stdout,
@@ -290,7 +314,7 @@ impl Container {
             child,
         } = run_container;
 
-        let io_component = create_io_component(stdin, stdout, stderr)?;
+        let io_component = create_child_io(stdin, stdout, stderr)?;
 
         // Container is finished executing
         self.is_executing.store(false, Ordering::SeqCst);
@@ -303,12 +327,12 @@ impl Container {
 
 pub struct ContainerRunRet {
     pub child: Child,
-    pub io_component: IoComponent,
+    pub io_component: ChildIo,
 }
 
 // Communicates with a component (e.g. container) via serialized
 // [`ContainerMessage`]/[`ContainerResponse`] through stdin and stdout, respectively
-pub struct IoComponent {
+pub struct ChildIo {
     // Handles to tasks sending to stdin and receiving from stdout and stderr
     pub tasks: JoinSet<Result<()>>,
     // Send messages to component stdin
@@ -317,11 +341,7 @@ pub struct IoComponent {
     pub child_stdout_rx: mpsc::Receiver<ContainerResponse>,
 }
 
-fn create_io_component(
-    stdin: ChildStdin,
-    stdout: ChildStdout,
-    stderr: ChildStderr,
-) -> Result<IoComponent> {
+fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) -> Result<ChildIo> {
     let (child_stdin_tx, mut child_stdin_rx) =
         mpsc::channel::<ContainerMessage>(IO_COMPONENT_CHANNEL_SIZE);
     let (child_stdout_tx, child_stdout_rx) =
@@ -425,9 +445,192 @@ fn create_io_component(
         Ok(())
     });
 
-    Ok(IoComponent {
+    Ok(ChildIo {
         tasks,
         child_stdin_tx,
         child_stdout_rx,
     })
+}
+
+#[cfg(test)]
+mod test {
+    use std::future::Future;
+    use std::{path::PathBuf, sync::Once};
+
+    use assertables::assert_contains;
+    use assertables::assert_contains_as_result;
+    use env_logger::Target;
+    use tempfile::{tempdir, TempDir};
+
+    use crate::init_logger;
+
+    use super::*;
+
+    static INIT_TEST_RUNNER: Once = Once::new();
+    static INIT_RUST_PROJECT: Once = Once::new();
+    static INIT_ENV_LOGGER: Once = Once::new();
+    const TEST_MAX_CONCURRENT_CONTAINERS: usize = 2;
+    const TEST_TIMEOUT_SEC: u64 = 5;
+
+    struct TestContainerBackend {
+        // Own temp dir so the directory is not dropped until the backend is dropped
+        _temp_dir: TempDir,
+        // A temporary project directory, holds a rust project
+        test_project_dir: PathBuf,
+    }
+
+    impl TestContainerBackend {
+        fn new(temp_dir: TempDir, test_project_dir: PathBuf) -> Self {
+            INIT_ENV_LOGGER.call_once(|| {
+                init_logger(Target::Stdout);
+            });
+
+            INIT_TEST_RUNNER.call_once(|| {
+                // Initialize all binaries in the crate, including the test runner
+                let mut cmd = std::process::Command::new("cargo");
+                cmd.arg("build")
+                    .output()
+                    .expect("Failed to build test runner");
+            });
+
+            INIT_RUST_PROJECT.call_once(|| {
+                // Initialize a rust project in the test project directory
+                let mut cmd = std::process::Command::new("cargo");
+                cmd.current_dir(&test_project_dir)
+                    .arg("init")
+                    .output()
+                    .expect("Failed to initialize rust project");
+            });
+
+            TestContainerBackend {
+                _temp_dir: temp_dir,
+                test_project_dir,
+            }
+        }
+    }
+
+    impl Backend for TestContainerBackend {
+        fn prepare_command(&self) -> Command {
+            // Test runs with working directory of package root
+            let mut cmd = if cfg!(target_os = "windows") {
+                Command::new("../target/debug/runner.exe")
+            } else {
+                Command::new("../target/debug/runner")
+            };
+            cmd.arg(&self.test_project_dir);
+            cmd
+        }
+    }
+
+    fn init_test_backend() -> TestContainerBackend {
+        let test_project_dir = PathBuf::from("test_project");
+        let temp_dir = tempdir().expect("Error creating temporary directory");
+        let test_project_dir = temp_dir.path().join(test_project_dir);
+        let _ = std::fs::create_dir_all(&test_project_dir);
+        TestContainerBackend::new(temp_dir, test_project_dir)
+    }
+
+    // Times out a test after a certain number of seconds
+    trait Timeout: Future + Sized {
+        fn with_timeout(self) -> tokio::time::Timeout<Self> {
+            tokio::time::timeout(std::time::Duration::from_secs(TEST_TIMEOUT_SEC), self)
+        }
+    }
+
+    impl<T: Future + Sized> Timeout for T {}
+
+    #[tokio::test]
+    async fn test_hello_world() {
+        let backend = init_test_backend();
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
+        let container = container_factory.create_container(backend).await.unwrap();
+        let ContainerRunRet {
+            mut child,
+            mut io_component,
+        } = container.run().await.unwrap();
+
+        let execute_command = ExecuteCommand::new(
+            "fn main() { println!(\"Hello world!\"); }".to_string(),
+            TargetType::Binary,
+            CargoCommand::Run,
+        );
+        let message = ContainerMessage::Execute(execute_command);
+        io_component.child_stdin_tx.send(message).await.unwrap();
+        // Sends second `ExecuteCommand` to test it is ignored because runner does not process any
+        // stdin messages after first `ExecuteCommand`.
+        let execute_command = ExecuteCommand::new(
+            "fn main() { 
+                println!(\"Goodbye!\"); 
+            }"
+            .to_string(),
+            TargetType::Binary,
+            CargoCommand::Run,
+        );
+        let message = ContainerMessage::Execute(execute_command);
+        io_component.child_stdin_tx.send(message).await.unwrap();
+
+        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        assert!(exit_code.success());
+
+        // Get the last value
+        let mut response = None;
+        while let Some(value) = io_component.child_stdout_rx.recv().await {
+            response = Some(value);
+        }
+        let response = response.unwrap();
+        assert!(matches!(response, ContainerResponse::Execute(_)));
+        match response {
+            ContainerResponse::Execute(response) => {
+                let stdout = String::from_utf8_lossy(&response.stdout);
+                assert_contains!(stdout, "Hello world!\n");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_read_stderr() {
+        let backend = init_test_backend();
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
+        let container = container_factory.create_container(backend).await.unwrap();
+        let ContainerRunRet {
+            mut child,
+            mut io_component,
+        } = container.run().await.unwrap();
+
+        let execute_command = ExecuteCommand::new(
+            "fn main() { 
+                panic!(\"An error occurred!\"); 
+            }"
+            .to_string(),
+            TargetType::Binary,
+            CargoCommand::Run,
+        );
+        let message = ContainerMessage::Execute(execute_command);
+        io_component.child_stdin_tx.send(message).await.unwrap();
+
+        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        assert!(exit_code.success());
+
+        // Get the last value
+        let mut response = None;
+        while let Some(value) = io_component.child_stdout_rx.recv().await {
+            response = Some(value);
+        }
+        let response = response.unwrap();
+        assert!(matches!(response, ContainerResponse::Execute(_)));
+        match response {
+            ContainerResponse::Execute(response) => {
+                let stderr = String::from_utf8_lossy(&response.stderr);
+                assert_contains!(stderr, "An error occurred!\n");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_long_test_error() {
+        let res = tokio::time::sleep(std::time::Duration::from_secs(TEST_TIMEOUT_SEC + 1))
+            .with_timeout()
+            .await;
+        assert!(matches!(res, Err(tokio::time::error::Elapsed { .. })));
+    }
 }
