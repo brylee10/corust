@@ -1,1 +1,1 @@
-pub(crate) mod compile;
+pub mod compile;

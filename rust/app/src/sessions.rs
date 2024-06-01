@@ -3,13 +3,14 @@
 use std::sync::Arc;
 
 use corust_components::{server::Server, ServerMessage};
+use corust_sandbox::container::CargoCommand;
 use fnv::FnvHashMap;
 use tokio::sync::{
     broadcast::{channel, Sender},
     Mutex,
 };
 
-use crate::messages::SharedServer;
+use crate::{messages::SharedServer, runner::compile::CodeOutputState};
 
 pub type SessionId = String;
 pub type SharedSessionMap = Arc<Mutex<SessionMap>>;
@@ -17,6 +18,12 @@ pub type SharedSession = Arc<Mutex<Session>>;
 
 pub struct SessionMap {
     sessions: FnvHashMap<SessionId, SharedSession>,
+}
+
+impl Default for SessionMap {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl SessionMap {
@@ -51,6 +58,7 @@ pub struct Session {
     session_id: SessionId,
     server: SharedServer,
     bcast_tx: Sender<ServerMessage>,
+    _code_output_state: FnvHashMap<CargoCommand, CodeOutputState>,
 }
 
 impl Session {
@@ -65,6 +73,7 @@ impl Session {
             session_id,
             server,
             bcast_tx,
+            _code_output_state: FnvHashMap::default(),
         }
     }
 

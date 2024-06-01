@@ -57,13 +57,34 @@ const CustomButton = styled(Button)({
   },
 });
 
-// Interfaces
+// Interfaces/Type definitions
+
+// Ws message variants
+type WsClientTextMsg = RustDocUpdate | RustExecuteCommand;
 
 // Document update, with additional metadata
 interface DocUpdateWrapper {
   inner: BroadcastLocalDocUpdate;
   // Whether update is unsent, pending, or acked
   opState: OpState;
+}
+
+interface ExecuteCommand {
+  code: string;
+  targetType: TargetType;
+  cargoCommand: CargoCommand;
+}
+
+enum TargetType {
+  Library = "Library",
+  Binary = "Binary",
+}
+
+enum CargoCommand {
+  Build = "Build",
+  Run = "Run",
+  Test = "Test",
+  Clippy = "Clippy",
 }
 
 // Document update, without metadata. These fields are sent to the server.
@@ -122,6 +143,35 @@ interface AppProps {
   userId: bigint;
 }
 
+interface RustDocUpdate {
+  type: string;
+  docUpdate: string;
+}
+
+interface RustExecuteCommand {
+  type: string;
+  code: string;
+  targetType: TargetType;
+  cargoCommand: CargoCommand;
+}
+
+// Utilities
+const docUpdateToRust = (msg: DocUpdateWrapper): RustDocUpdate => {
+  return {
+    type: "wsDocUpdate",
+    docUpdate: msg.inner.docUpdate,
+  };
+};
+
+const executeCommandToObj = (msg: ExecuteCommand): RustExecuteCommand => {
+  return {
+    type: "wsExecuteCommand",
+    code: msg.code,
+    targetType: msg.targetType,
+    cargoCommand: msg.cargoCommand,
+  };
+};
+
 function App({ userId }: AppProps) {
   // Route params
   const params = useParams();
@@ -177,6 +227,27 @@ function App({ userId }: AppProps) {
     },
     [remoteAnnotationType, view]
   );
+
+  const updateCollabSelections = useCallback((client: Client) => {
+    const cursorPositions: UserCursorPos[] = client.cursor_pos_vec();
+    const newCollabSelections: UserSelectionRange[] = cursorPositions.map(
+      (userCursorPos) => {
+        const cursorPos = userCursorPos.cursor_pos();
+        const selectionRange = {
+          from: cursorPos.from(),
+          to: cursorPos.to(),
+          anchor: cursorPos.anchor(),
+          head: cursorPos.head(),
+        };
+
+        return {
+          userId: userCursorPos.user_id(),
+          selection: selectionRange,
+        };
+      }
+    );
+    setCollabSelections(newCollabSelections);
+  }, []);
 
   useEffect(() => {
     // Requires a CodeMirror view for the transaction dispatch to target
@@ -245,7 +316,8 @@ function App({ userId }: AppProps) {
                   "container code - ",
                   codeContainerTextRef.current.code
                 );
-                wsSendRef.current(docUpdateWrapper);
+                const docUpdateRust = docUpdateToRust(docUpdateWrapper);
+                wsSendRef.current(docUpdateRust);
               } else if (updateType === ClientResponseType.UserList) {
                 console.debug("User list update");
                 const userList = clientResponse.get_user_list() as UserList;
@@ -308,19 +380,22 @@ function App({ userId }: AppProps) {
         controller.abort();
       };
     }
-  }, [client, params.sessionId, dispatchTransaction, view]);
+  }, [
+    client,
+    params.sessionId,
+    dispatchTransaction,
+    view,
+    updateCollabSelections,
+  ]);
 
-  const wsSend = useCallback((docUpdateWrapper: DocUpdateWrapper) => {
+  // Sends a stringified object to the server
+  const wsSend = useCallback((wsMessage: WsClientTextMsg) => {
     console.debug("Try sending ws message", ws.current, ws.current?.readyState);
+    const stringifiedMsg = JSON.stringify(wsMessage);
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
-      console.debug("Sending doc update: ", docUpdateWrapper.inner.docUpdate);
-      console.assert(
-        docUpdateWrapper.opState === OpState.Unsent,
-        "The doc update sent should not have been previously sent"
-      );
-      ws.current.send(docUpdateWrapper.inner.docUpdate);
+      ws.current.send(stringifiedMsg);
     } else {
-      console.error("WS not open to send message: ", docUpdateWrapper);
+      console.error("WS not open to send message: ", stringifiedMsg);
     }
   }, []);
   const wsSendRef = useRef(wsSend);
@@ -342,44 +417,16 @@ function App({ userId }: AppProps) {
     clientRef.current = client;
   }, [client]);
 
-  const updateCollabSelections = useCallback((client: Client) => {
-    const cursorPositions: UserCursorPos[] = client.cursor_pos_vec();
-    const newCollabSelections: UserSelectionRange[] = cursorPositions.map(
-      (userCursorPos) => {
-        const cursorPos = userCursorPos.cursor_pos();
-        const selectionRange = {
-          from: cursorPos.from(),
-          to: cursorPos.to(),
-          anchor: cursorPos.anchor(),
-          head: cursorPos.head(),
-        };
-
-        return {
-          userId: userCursorPos.user_id(),
-          selection: selectionRange,
-        };
-      }
-    );
-    setCollabSelections(newCollabSelections);
-  }, []);
-
   const compileCode = useCallback(async () => {
-    const headers = new Headers();
-    headers.append("Content-Type", "application/json");
-
-    // Will only throw an error if network error encountered
-    try {
-      const response = await fetch("http://127.0.0.1:8000/compile", {
-        method: "POST",
-        headers: headers,
-        body: JSON.stringify({ code: codeContainerText.code }),
-      });
-      const cargoOutput = await response.json();
-      setCargoOutput(cargoOutput);
-    } catch (error) {
-      console.error("Fetch error: ", error);
-    }
-  }, [codeContainerText.code]);
+    const executeCommand = {
+      code: codeContainerText.code,
+      targetType: TargetType.Binary,
+      cargoCommand: CargoCommand.Run,
+    };
+    const executeCommandObj = executeCommandToObj(executeCommand);
+    console.debug("Sending execute command over ws: ", executeCommand);
+    wsSend(executeCommandObj);
+  }, [codeContainerText.code, wsSend]);
 
   const formatCargoOutput = (cargoOutput: RunnerOutput | null) => {
     if (!cargoOutput) {
@@ -491,7 +538,13 @@ function App({ userId }: AppProps) {
             },
             opState: OpState.Unsent,
           };
-          wsSend(docUpdate);
+          console.debug("Sending doc update: ", docUpdate.inner.docUpdate);
+          console.assert(
+            docUpdate.opState === OpState.Unsent,
+            "The doc update sent should not have been previously sent"
+          );
+          const docUpdateRust = docUpdateToRust(docUpdate);
+          wsSend(docUpdateRust);
         }
 
         // Local update updates cursor positions and code container

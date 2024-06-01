@@ -1,10 +1,16 @@
+use std::sync::Arc;
+
 use corust_components::network::{UserId, UserList};
+use corust_components::BroadcastLocalDocUpdate;
+use corust_sandbox::container::{ContainerMessage, ExecuteCommand};
 use futures_util::stream::{SplitSink, StreamExt};
 use futures_util::SinkExt;
+use serde::{Deserialize, Serialize};
 
 use crate::messages::*;
+use crate::runner::compile::{compile_code, SharedContainerFactory};
 use crate::sessions::{SessionId, SharedSessionMap};
-use corust_components::{network::RemoteUpdate, BroadcastLocalDocUpdate, ServerMessage, Snapshot};
+use corust_components::{network::RemoteUpdate, ServerMessage, Snapshot};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::time::Duration;
 use warp::{
@@ -21,11 +27,28 @@ const REMOVE_INACTIVE_USER_SEC: u64 = 30;
 // If a connection did not end gracefully then the caller itself was unable to remove itself
 const CHECK_INACTIVE_USERS_SEC: u64 = 30;
 
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum WsClientTextMsg {
+    #[serde(rename = "wsDocUpdate")]
+    BroadcastDocUpdate(LocalUpdateStringified),
+    #[serde(rename = "wsExecuteCommand")]
+    Execute(ExecuteCommand),
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalUpdateStringified {
+    // Rust doc update `BroadcastLocalDocUpdate` serialized
+    doc_update: String,
+}
+
 pub(crate) async fn handle_websocket(
     websocket: WebSocket,
     session_map: SharedSessionMap,
     session_id: SessionId,
     user_id: UserId,
+    container_factory: SharedContainerFactory,
 ) {
     // unwrap: session_id is always valid, the user gets or creates a session on join, and the user joins
     // before connecting to the websocket
@@ -74,36 +97,44 @@ pub(crate) async fn handle_websocket(
                                     // TODO: Replace this with `RemoteUpdate` for consistency
                                     let msg = msg.to_str().unwrap();
                                     log::debug!("Received raw message from client: {msg:?}");
-                                    let msg: BroadcastLocalDocUpdate = serde_json::from_str(msg).unwrap();
+                                    let client_ws_msg: WsClientTextMsg = serde_json::from_str(msg).unwrap();
+                                    match client_ws_msg {
+                                        WsClientTextMsg::BroadcastDocUpdate(doc_update_stringified) => {
+                                            let msg: BroadcastLocalDocUpdate = serde_json::from_str(&doc_update_stringified.doc_update).unwrap();
+                                            let res = server.apply_client_operation(msg.text_operation().clone(), msg.last_server_state_id(), msg.cursor_map(), msg.user_id());
+                                            if let Err(e) = &res {
+                                                log::error!("Error applying client operation to server: {e:?}");
+                                            }
+                                            let (text_op, cursor_map) = res.unwrap();
 
-                                    let res = server.apply_client_operation(msg.text_operation().clone(), msg.last_server_state_id(), msg.cursor_map(), msg.user_id());
-                                    if let Err(e) = &res {
-                                        log::error!("Error applying client operation to server: {e:?}");
-                                    }
-                                    let (text_op, cursor_map) = res.unwrap();
+                                            log::debug!("Current server document: {}", server.current_document_state().document());
+                                            debug_assert!(&cursor_map == server.current_document_state().cursor_map());
 
-                                    log::debug!("Current server document: {}", server.current_document_state().document());
-                                    debug_assert!(&cursor_map == server.current_document_state().cursor_map());
-
-                                    let remote_update = RemoteUpdate {
-                                        // Todo, replace with real IDs
-                                        source: msg.user_id(),
-                                        dest: 0,
-                                        state_id: server.current_state_id(),
-                                        operation: text_op,
-                                        cursor_map,
+                                            let remote_update = RemoteUpdate {
+                                                // Todo, replace with real IDs
+                                                source: msg.user_id(),
+                                                dest: 0,
+                                                state_id: server.current_state_id(),
+                                                operation: text_op,
+                                                cursor_map,
+                                            };
+                                            let msg = ServerMessage::RemoteUpdate(remote_update);
+                                            // Broadcast the message to other clients
+                                            if let Err(e) = bcast_tx.send(msg) {
+                                                // Not an error, just means all receiver handles have been closed
+                                                log::info!(
+                                                    "All receiver handles have been closed. {e:?}"
+                                                );
+                                                // Handle error (e.g., all receiver handles have been closed)
+                                                return;
+                                            }
+                                        }
+                                        WsClientTextMsg::Execute(execute_command) => {
+                                            log::debug!("Received Execute Command from client: {execute_command:?}");
+                                            let container_msg = ContainerMessage::Execute(execute_command);
+                                            let _ = compile_code(container_msg, Arc::clone(&session), Arc::clone(&container_factory)).await;
+                                        }
                                     };
-                                    let msg = ServerMessage::RemoteUpdate(remote_update);
-
-                                    // Broadcast the message to other clients
-                                    if let Err(e) = bcast_tx.send(msg) {
-                                        // Not an error, just means all receiver handles have been closed
-                                        log::info!(
-                                            "All receiver handles have been closed. {e:?}"
-                                        );
-                                        // Handle error (e.g., all receiver handles have been closed)
-                                        return;
-                                    }
                                 } else if msg.is_pong() {
                                     let activity_time = std::time::Instant::now();
                                     log::debug!("Received pong from client {user_id} in session ID {session_id} at time {activity_time:?}");
@@ -203,43 +234,69 @@ pub(crate) async fn handle_websocket(
                     }
                 },
                 _ = check_inactive_users.tick() => {
-                    log::debug!("Checking if users in session ID {session_id} are inactive");
-                    let mut server = server.lock().await;
-
-                    log::debug!("Users present in session ID {session_id}: {:?}", server.users());
-
-                    let mut users_to_remove = Vec::new();
-
-                    for (id, user) in server.users() {
-                        let user_last_activity = user.activity.last_activity;
-                        if user_last_activity.elapsed().as_secs() > REMOVE_INACTIVE_USER_SEC {
-                            log::debug!("User {user:?} in session ID {session_id} is inactive, marking for removal");
-                            users_to_remove.push(*id);
+                    match remove_inactive_users(&session_id, Arc::clone(&server), user_id, &mut ws_tx).await {
+                        RemoveUsersRet::RemoveSelf => {
+                            // Exit from `select!` because current user is inactive
+                            return;
                         }
-                    }
-
-                    for id in users_to_remove.iter() {
-                        let user = server.users_mut().remove(id).unwrap();
-                        log::debug!("Removing inactive user {user:?} from session ID {session_id}");
-                    }
-
-                    if users_to_remove.contains(&user_id) {
-                        // tx close would initiate close handshake with client, but
-                        match ws_tx.close().await {
-                            Ok(_) => {
-                                log::debug!("Closed websocket for inactive current user {user_id} from session ID {session_id}");
-                            }
-                            Err(e) => {
-                                log::error!("Failed to close websocket for current user {user_id} from session ID {session_id}: {e}");
-                            }
-                        }
-                        // Exit since the current user is inactive
-                        return;
+                        RemoveUsersRet::Continue => {}
                     }
                 },
             }
         }
     });
+}
+
+enum RemoveUsersRet {
+    RemoveSelf,
+    Continue,
+}
+
+async fn remove_inactive_users(
+    session_id: &SessionId,
+    server: SharedServer,
+    user_id: UserId,
+    ws_tx: &mut SplitSink<WebSocket, Message>,
+) -> RemoveUsersRet {
+    log::debug!("Checking if users in session ID {session_id} are inactive");
+    let mut server = server.lock().await;
+
+    log::debug!(
+        "Users present in session ID {session_id}: {:?}",
+        server.users()
+    );
+
+    let mut users_to_remove = Vec::new();
+
+    for (id, user) in server.users() {
+        let user_last_activity = user.activity.last_activity;
+        if user_last_activity.elapsed().as_secs() > REMOVE_INACTIVE_USER_SEC {
+            log::debug!(
+                "User {user:?} in session ID {session_id} is inactive, marking for removal"
+            );
+            users_to_remove.push(*id);
+        }
+    }
+
+    for id in users_to_remove.iter() {
+        let user = server.users_mut().remove(id).unwrap();
+        log::debug!("Removing inactive user {user:?} from session ID {session_id}");
+    }
+
+    if users_to_remove.contains(&user_id) {
+        // tx close would initiate close handshake with client, but
+        match ws_tx.close().await {
+            Ok(_) => {
+                log::debug!("Closed websocket for inactive current user {user_id} from session ID {session_id}");
+            }
+            Err(e) => {
+                log::error!("Failed to close websocket for current user {user_id} from session ID {session_id}: {e}");
+            }
+        }
+        // Exit since the current user is inactive
+        return RemoveUsersRet::RemoveSelf;
+    }
+    RemoveUsersRet::Continue
 }
 
 async fn send_snapshot(server: SharedServer, ws_tx: &mut SplitSink<WebSocket, Message>) {
@@ -274,8 +331,9 @@ async fn send_snapshot(server: SharedServer, ws_tx: &mut SplitSink<WebSocket, Me
     }
 }
 
-pub(crate) fn websocket_route(
+pub fn websocket_route(
     session_map: SharedSessionMap,
+    container_factory: SharedContainerFactory,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("websocket")
         .and(warp::path::param())
@@ -283,9 +341,10 @@ pub(crate) fn websocket_route(
         .and(warp::ws())
         .map(
             move |session_id: String, user_id: UserId, ws: warp::ws::Ws| {
-                let session_map = session_map.clone();
+                let session_map = Arc::clone(&session_map);
+                let container_factory = Arc::clone(&container_factory);
                 ws.on_upgrade(move |ws| {
-                    handle_websocket(ws, session_map.clone(), session_id, user_id)
+                    handle_websocket(ws, session_map, session_id, user_id, container_factory)
                 })
             },
         )

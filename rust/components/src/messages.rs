@@ -5,22 +5,20 @@ use wasm_bindgen::prelude::*;
 use corust_transforms::xforms::{TextOperation, TextUpdate};
 use serde::{Deserialize, Serialize};
 use std::process::Output;
+use std::str::FromStr;
 
 /// Represents a local document update, sent to the server
+// Compatible with JS camelCase field names
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct BroadcastLocalDocUpdate {
     // The text operation representing the local document update
-    // Compatible with JS camelCase field names
-    #[serde(rename = "textOperation")]
     text_operation: TextOperation,
     // The last common server state that this update branches off of
-    #[serde(rename = "lastServerStateId")]
     last_server_state_id: ServerStateId,
     // The new cursor map following this update
-    #[serde(rename = "cursorMap")]
     cursor_map: CursorMap,
     // The user ID of the client that sent this update
-    #[serde(rename = "userId")]
     user_id: UserId,
 }
 
@@ -53,6 +51,15 @@ impl BroadcastLocalDocUpdate {
 
     pub fn user_id(&self) -> UserId {
         self.user_id
+    }
+}
+
+// `BroadcastLocalDocUpdate` is always JSON serialized
+impl FromStr for BroadcastLocalDocUpdate {
+    type Err = serde_json::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        serde_json::from_str(s)
     }
 }
 

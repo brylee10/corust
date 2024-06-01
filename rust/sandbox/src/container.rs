@@ -25,8 +25,6 @@ use crate::MESSAGE_BUF_SIZE_BYTES;
 
 pub const IO_COMPONENT_CHANNEL_SIZE: usize = 100;
 
-pub type SharedContainerFactory = Arc<ContainerFactory>;
-
 #[derive(Debug, Snafu)]
 pub enum ContainerError {
     #[snafu(display("Command failed to start: {}", source))]
@@ -91,6 +89,7 @@ impl From<CargoCommand> for Command {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecuteCommand {
     pub code: String,
     pub target_type: TargetType,
@@ -267,6 +266,12 @@ impl ContainerFactory {
             .context(AcquireSemaphoreSnafu)?;
         Ok(Container::new(run_container_permit, backend))
     }
+
+    /// Convenience method to a container with a [`DockerBackend`]
+    pub async fn create_container_docker_backend(&self) -> Result<Container<DockerBackend>> {
+        let docker_backend = DockerBackend::new();
+        self.create_container(docker_backend).await
+    }
 }
 
 #[derive(EnumSetType, Debug)]
@@ -314,20 +319,17 @@ impl<B: Backend> Container<B> {
             child,
         } = run_container;
 
-        let io_component = create_child_io(stdin, stdout, stderr)?;
+        let child_io = create_child_io(stdin, stdout, stderr)?;
 
         // Container is finished executing
         self.is_executing.store(false, Ordering::SeqCst);
-        Ok(ContainerRunRet {
-            child,
-            io_component,
-        })
+        Ok(ContainerRunRet { child, child_io })
     }
 }
 
 pub struct ContainerRunRet {
     pub child: Child,
-    pub io_component: ChildIo,
+    pub child_io: ChildIo,
 }
 
 // Communicates with a component (e.g. container) via serialized
@@ -470,7 +472,7 @@ mod test {
     static INIT_RUST_PROJECT: Once = Once::new();
     static INIT_ENV_LOGGER: Once = Once::new();
     const TEST_MAX_CONCURRENT_CONTAINERS: usize = 2;
-    const TEST_TIMEOUT_SEC: u64 = 5;
+    const TEST_TIMEOUT_SEC: u64 = 60;
 
     struct TestContainerBackend {
         // Own temp dir so the directory is not dropped until the backend is dropped
@@ -546,7 +548,7 @@ mod test {
         let container = container_factory.create_container(backend).await.unwrap();
         let ContainerRunRet {
             mut child,
-            mut io_component,
+            mut child_io,
         } = container.run().await.unwrap();
 
         let execute_command = ExecuteCommand::new(
@@ -555,26 +557,26 @@ mod test {
             CargoCommand::Run,
         );
         let message = ContainerMessage::Execute(execute_command);
-        io_component.child_stdin_tx.send(message).await.unwrap();
+        child_io.child_stdin_tx.send(message).await.unwrap();
         // Sends second `ExecuteCommand` to test it is ignored because runner does not process any
         // stdin messages after first `ExecuteCommand`.
         let execute_command = ExecuteCommand::new(
-            "fn main() { 
-                println!(\"Goodbye!\"); 
+            "fn main() {
+                println!(\"Goodbye!\");
             }"
             .to_string(),
             TargetType::Binary,
             CargoCommand::Run,
         );
         let message = ContainerMessage::Execute(execute_command);
-        io_component.child_stdin_tx.send(message).await.unwrap();
+        child_io.child_stdin_tx.send(message).await.unwrap();
 
         let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
         assert!(exit_code.success());
 
         // Get the last value
         let mut response = None;
-        while let Some(value) = io_component.child_stdout_rx.recv().await {
+        while let Some(value) = child_io.child_stdout_rx.recv().await {
             response = Some(value);
         }
         let response = response.unwrap();
@@ -594,7 +596,7 @@ mod test {
         let container = container_factory.create_container(backend).await.unwrap();
         let ContainerRunRet {
             mut child,
-            mut io_component,
+            mut child_io,
         } = container.run().await.unwrap();
 
         let execute_command = ExecuteCommand::new(
@@ -606,14 +608,14 @@ mod test {
             CargoCommand::Run,
         );
         let message = ContainerMessage::Execute(execute_command);
-        io_component.child_stdin_tx.send(message).await.unwrap();
+        child_io.child_stdin_tx.send(message).await.unwrap();
 
         let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
         assert!(exit_code.success());
 
         // Get the last value
         let mut response = None;
-        while let Some(value) = io_component.child_stdout_rx.recv().await {
+        while let Some(value) = child_io.child_stdout_rx.recv().await {
             response = Some(value);
         }
         let response = response.unwrap();

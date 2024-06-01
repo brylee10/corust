@@ -224,7 +224,7 @@ async fn handle_user_join(
     Ok(warp::reply::json(&UserJoinResponse { user_id }))
 }
 
-pub(crate) fn user_join_route(
+pub fn user_join_route(
     session_map: SharedSessionMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("join")

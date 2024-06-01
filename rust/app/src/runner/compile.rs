@@ -1,93 +1,105 @@
-use std::{
-    path::Path,
-    process::{Command, Output},
-};
+use std::sync::Arc;
 
 use corust_components::RunnerOutput;
-use warp::Filter;
+use corust_sandbox::container::{
+    ContainerFactory, ContainerMessage, ContainerResponse, ContainerRunRet,
+};
+use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
+use warp::{http::StatusCode, reply};
 
-use crate::messages::{CodeContainer, SharedAppState};
+use crate::{
+    messages::{CompileRejections, Rejections},
+    sessions::SharedSession,
+};
 
-pub(crate) async fn compile_code(code: String, state: SharedAppState) -> impl warp::Reply {
-    let join_handle_result = tokio::task::spawn_blocking({
-        let code = code.clone();
-        move || -> Output {
-            // Create a file with this code inside a sandbox
-            let sandbox = Path::new(r"C:\Users\bryan\Desktop\rust\sandbox");
-            let sandbox_main = sandbox.join(r"src\main.rs");
-            std::fs::write(&sandbox_main, code).unwrap_or_else(|e| {
-                panic!(
-                    "Error {}, Unable to write file to path {:?}",
-                    e, &sandbox_main
-                )
-            });
+pub type SharedContainerFactory = Arc<Mutex<ContainerFactory>>;
 
-            // Compiles and runs `rust_program`
-            // Assumes `cargo` is in the `PATH`
-            let output = Command::new("cargo")
-                .current_dir(sandbox)
-                .arg("run")
-                .arg("--release")
-                .output()
-                .expect("Failed to run `cargo run`");
+// Server side in memory storage of most recent code and run output for one session
+#[derive(Deserialize, Serialize, Clone, Debug)]
+pub struct CodeOutputState {
+    pub container_message: ContainerMessage,
+    pub runner_output: Option<RunnerOutput>,
+}
 
-            if output.status.success() {
-                log::info!("Compilation successful");
-            } else {
-                // Output stderr not guaranteed to be valid UTF-8
-                let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-                log::error!("Compilation failed: Error {stderr}");
-            }
-
-            // Always returns output regardless if compilation run succeeded or failed.
-            // The output will have the stdout/stderr in either case.
-            output
+pub(crate) async fn compile_code(
+    container_message: ContainerMessage,
+    _session: SharedSession,
+    container_factory: SharedContainerFactory,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let container_factory = container_factory.lock().await;
+    let container = match container_factory.create_container_docker_backend().await {
+        Ok(container) => container,
+        Err(e) => {
+            log::error!("Error creating container: {}", e);
+            return Err(warp::reject::custom(Rejections::Compile(
+                CompileRejections::UnableToCreateBackend,
+            )));
         }
-    })
-    .await;
+    };
+    // Factory no longer needed
+    std::mem::drop(container_factory);
 
-    let (code, runner_output) = match join_handle_result {
-        Ok(compile_output) => {
-            let runner_output = RunnerOutput::new(
-                String::from_utf8_lossy(&compile_output.stdout).to_string(),
-                String::from_utf8_lossy(&compile_output.stderr).to_string(),
-                compile_output.status.code().unwrap_or(-1),
-            );
-            // Update shared state for late joiners
-            let mut state = state.lock().await;
-            state.last_code = CodeContainer { code: code.clone() };
-
-            (warp::http::StatusCode::OK, runner_output)
-        }
-        Err(_) => {
-            let error_output = RunnerOutput::new(
-                String::new(),
-                String::from("An unexpected error occurred thread while compiling."),
-                1,
-            );
-            (warp::http::StatusCode::INTERNAL_SERVER_ERROR, error_output)
+    let ContainerRunRet {
+        mut child,
+        mut child_io,
+    } = match container.run().await {
+        Ok(container_run_ret) => container_run_ret,
+        Err(e) => {
+            log::error!("Error running container: {}", e);
+            return Err(warp::reject::custom(Rejections::Compile(
+                CompileRejections::RunContainerFailed,
+            )));
         }
     };
 
-    // Returns different statuses per compilation result
-    // Previously was using `.map().with().with()` but these types in the branches would not match. Instead, return one type
-    // and change the constructor args based on code.
-    let reply = warp::reply::json(&runner_output);
-    let reply = warp::reply::with_header(reply, "Access-Control-Allow-Origin", "*");
+    match child_io.child_stdin_tx.send(container_message).await {
+        Ok(_) => {}
+        Err(e) => {
+            log::error!("Error sending message to container: {}", e);
+            return Err(warp::reject::custom(Rejections::Compile(
+                CompileRejections::SendContainerMessageFailed,
+            )));
+        }
+    }
 
-    warp::reply::with_status(reply, code)
+    let exit_code = child.wait().await.unwrap();
+    if !exit_code.success() {
+        return Err(warp::reject::custom(Rejections::Compile(
+            CompileRejections::RunNonZeroExit,
+        )));
+    }
+
+    // Get the last value
+    let mut response = None;
+    while let Some(value) = child_io.child_stdout_rx.recv().await {
+        response = Some(value);
+    }
+    let response = response.unwrap();
+    match response {
+        ContainerResponse::Execute(response) => {
+            // Simulate running the code and getting output and status code
+            let code = StatusCode::OK;
+            let reply = reply::json(&response);
+            let reply = reply::with_header(reply, "Access-Control-Allow-Origin", "*");
+
+            Ok(reply::with_status(reply, code))
+        }
+    }
 }
 
-pub(crate) fn compile_code_route(
-    state: SharedAppState,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path("compile")
-        .and(warp::post())
-        .and(warp::body::json())
-        // Implicitly uses `serde_json` to convert bytes to the mapped type (`CodeContainer`)
-        .then(move |code: CodeContainer| {
-            println!("Received code: {code:?}");
-            // Compile the code
-            compile_code(code.code, state.clone())
-        })
-}
+// pub(crate) fn compile_code_route(
+//     session: SharedSession,
+//     container_factory: SharedContainerFactory,
+// ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+//     warp::path("compile")
+//         .and(warp::post())
+//         .and(warp::body::json())
+//         // Implicitly uses `serde_json` to convert bytes to the mapped type (`ContainerMessage`)
+//         // `compile_code` is falliable, so prefer `and_then`
+//         .and_then(move |container_message: ContainerMessage| {
+//             log::debug!("Received code: {compile_request:?}");
+//             // Compile the code
+//             compile_code(compile_request, session.clone(), container_factory.clone())
+//         })
+// }

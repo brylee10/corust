@@ -10,7 +10,7 @@ use super::CursorMap;
 // Server side in memory storage of most recent code and run output for one session
 #[derive(Deserialize, Serialize, Clone, Debug)]
 pub struct AppState {
-    pub last_code: CodeContainer,
+    pub last_code: CompileRequest,
     pub last_run: Option<RunnerOutput>,
 }
 
@@ -27,7 +27,7 @@ pub type SharedServer = Arc<Mutex<Server>>;
 
 // API for code changes
 #[derive(Deserialize, Serialize, Clone, Debug, Default)]
-pub struct CodeContainer {
+pub struct CompileRequest {
     pub code: String,
 }
 
