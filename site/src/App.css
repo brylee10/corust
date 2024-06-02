@@ -1,31 +1,102 @@
+:root {
+  --border-color: #b9b9b9;
+  --border: 1px solid var(--border-color);
+}
+
 .App {
   display: flex;
   flex-direction: column;
   height: 100vh; /* Take up full viewport height */
+  padding: 20px;
+  box-sizing: border-box; /* Include padding in height calculation */
 }
 
 .editor {
-  font-family: "Fira Code", "Consolas", monospace; /* Popular code editor fonts */
+  font-family: "Source Code Pro", monospace; /* Popular code editor fonts */
   font-size: 16px;
   border-radius: 4px;
   border: 6px solid gray; /* Solid, curved, gray border */
-  margin: 10px; /* Margin around the editor */
+  margin-top: 10px; /* Margin around the editor */
   resize: vertical; /* Allows vertical resizing */
-  flex-grow: 1; /* Take up remaining vertical space */
+  flex: 1; /* Take up remaining vertical space */
   overflow: auto; /* Add scrollbars when content overflows */
 }
 
-.compile-output {
-  font-family: "Fira Code", "Consolas", monospace; /* Popular code editor fonts */
+.runner-output {
   font-size: 16px;
   border-radius: 4px;
-  padding: 10px;
-  width: 90%; /* Adjust as needed */
-  resize: vertical; /* Allows vertical resizing */
+  /* A light calm green */
+  background: #f7fff6;
+  margin-top: 10px;
+  padding-left: 10px;
+  padding-right: 10px;
+  /* A thin, light gray border */
+  border-width: thin;
+  border-color: var(--border-color);
+  border-style: solid;
 }
 
-.editor-right {
-  background-color: #e0e0e0; /* Slightly different background for output */
+.runner-output.open {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  /* Padding from following stderr/stdout outputs*/
+  padding-bottom: 10px;
+}
+
+/* Hide the output when closed */
+.runner-output.closed {
+  flex: 0;
+  cursor: pointer;
+}
+
+.runner-output .container {
+  font-family: "Roboto", "Helvetica", "Arial", sans-serif;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.runner-output .container .title {
+  font-family: "Roboto", "Helvetica", "Arial", sans-serif;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px;
+}
+
+.runner-output .body {
+}
+
+.runner-output .body .subtitle {
+  font-family: "Roboto", "Helvetica", "Arial", sans-serif;
+  color: var(--border-color);
+  display: flex;
+}
+
+.runner-output .body .subtitle::before {
+  flex: 1;
+  margin: auto;
+  border-top: var(--border);
+  content: "";
+  margin-right: 1%;
+}
+
+.runner-output .body .subtitle::after {
+  flex: 1;
+  margin: auto;
+  border-top: var(--border);
+  content: "";
+  margin-left: 1%;
+}
+
+.runner-output .body .content {
+  font-family: "Source Code Pro", monospace; /* Popular code editor fonts */
+  padding-bottom: 8px;
+}
+
+.runner-output .close {
+  flex: 0;
 }
 
 .text-highlight {

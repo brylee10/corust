@@ -16,9 +16,6 @@ function UserIconList({ userArr, selfUserId }: UserIconListProps) {
       display: "flex",
       alignItems: "center",
       justifyContent: "center",
-      paddingTop: "10px",
-      paddingLeft: "20px",
-      paddingRight: "20px",
     },
   };
 

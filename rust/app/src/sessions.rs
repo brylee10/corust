@@ -10,7 +10,10 @@ use tokio::sync::{
     Mutex,
 };
 
-use crate::{messages::SharedServer, runner::compile::CodeOutputState};
+use crate::{
+    execute::runner::{CodeOutputState, ConcurrentRunChecker, SharedConcurrentRunChecker},
+    messages::SharedServer,
+};
 
 pub type SessionId = String;
 pub type SharedSessionMap = Arc<Mutex<SessionMap>>;
@@ -59,6 +62,7 @@ pub struct Session {
     server: SharedServer,
     bcast_tx: Sender<ServerMessage>,
     _code_output_state: FnvHashMap<CargoCommand, CodeOutputState>,
+    concurrent_run_checker: SharedConcurrentRunChecker,
 }
 
 impl Session {
@@ -74,6 +78,7 @@ impl Session {
             server,
             bcast_tx,
             _code_output_state: FnvHashMap::default(),
+            concurrent_run_checker: Arc::new(Mutex::new(ConcurrentRunChecker::new())),
         }
     }
 
@@ -83,5 +88,9 @@ impl Session {
 
     pub fn server(&self) -> SharedServer {
         Arc::clone(&self.server)
+    }
+
+    pub fn concurrent_run_checker(&self) -> SharedConcurrentRunChecker {
+        Arc::clone(&self.concurrent_run_checker)
     }
 }

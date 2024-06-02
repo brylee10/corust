@@ -218,6 +218,8 @@ impl Client {
         #[cfg(all(feature = "metrics", feature = "js"))]
         let start = web_utils::now(); // Start timing
 
+        #[cfg(all(feature = "metrics", feature = "js"))]
+        web_utils::log(&format!("Client received server message: {}", server_msg));
         let server_msg: ServerMessage = serde_json::from_str(server_msg).unwrap();
         // Prod sim difference: prod uses more triggered client updates (like `UserList`)
         let triggered_client_update = self.handle_server_message_inner(&server_msg);
@@ -302,7 +304,7 @@ impl Client {
                     ))
                 }
             }
-            ServerMessage::Compile(_) => None,
+            ServerMessage::Run(_) => None,
             ServerMessage::Snapshot(snapshot) => {
                 self.document = snapshot.document.to_string();
                 self.cursor_map = snapshot.cursor_map.clone();
@@ -395,7 +397,7 @@ impl Client {
                 debug_assert!(remote_update.state_id == self.last_server_state_id + 1);
                 self.last_server_state_id = remote_update.state_id;
             }
-            ServerMessage::Compile(_) => {}
+            ServerMessage::Run(_) => {}
             ServerMessage::Snapshot(snapshot) => {
                 // Snapshots should occur when the client is a late joiner
                 debug_assert!(self.last_server_state_id == 0);

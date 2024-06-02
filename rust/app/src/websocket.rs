@@ -6,10 +6,13 @@ use corust_sandbox::container::{ContainerMessage, ExecuteCommand};
 use futures_util::stream::{SplitSink, StreamExt};
 use futures_util::SinkExt;
 use serde::{Deserialize, Serialize};
+use tokio::sync::{broadcast, mpsc};
 
+use crate::execute::runner::{
+    container_response_to_runner_output, run_code, SharedContainerFactory,
+};
 use crate::messages::*;
-use crate::runner::compile::{compile_code, SharedContainerFactory};
-use crate::sessions::{SessionId, SharedSessionMap};
+use crate::sessions::{SessionId, SharedSession, SharedSessionMap};
 use corust_components::{network::RemoteUpdate, ServerMessage, Snapshot};
 use tokio::sync::broadcast::error::RecvError;
 use tokio::time::Duration;
@@ -26,6 +29,9 @@ const REMOVE_INACTIVE_USER_SEC: u64 = 30;
 // Note that inactive user check for each connection will check all users for inactivity
 // If a connection did not end gracefully then the caller itself was unable to remove itself
 const CHECK_INACTIVE_USERS_SEC: u64 = 30;
+// Number of [`ContainerResponse`] messages that can be bufferred from a running container
+// in the channel
+const CONTAINER_RESPONSE_MSG_LIMIT: usize = 8;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -131,8 +137,13 @@ pub(crate) async fn handle_websocket(
                                         }
                                         WsClientTextMsg::Execute(execute_command) => {
                                             log::debug!("Received Execute Command from client: {execute_command:?}");
-                                            let container_msg = ContainerMessage::Execute(execute_command);
-                                            let _ = compile_code(container_msg, Arc::clone(&session), Arc::clone(&container_factory)).await;
+                                            // Spawn new task for execution to allow processing other ws messages
+                                            let session = Arc::clone(&session);
+                                            let container_factory = Arc::clone(&container_factory);
+                                            let bcast_tx = bcast_tx.clone();
+                                            tokio::spawn(async move {
+                                                handle_execution(execute_command, session, bcast_tx, container_factory).await;
+                                            });
                                         }
                                     };
                                 } else if msg.is_pong() {
@@ -192,7 +203,9 @@ pub(crate) async fn handle_websocket(
                     // Receive broadcast messages, forward to client
                     match msg {
                         Ok(msg) => {
-                            let msg: String = serde_json::ser::to_string(&msg).unwrap_or_else(|e| panic!("Error serializing string {msg:?}, error {e}"));
+                            log::debug!("Broadcasting pre-serialized message: {msg:?}");
+                            let msg = serde_json::to_string(&msg).unwrap_or_else(|e| panic!("Error serializing string {msg:?}, error {e}"));
+                            log::debug!("Broadcasting serialized message: {msg:?}");
                             let msg: Message = Message::text(msg);
                             log::debug!("Sending message to clients: {msg:?}");
                             if let Err(e) = ws_tx.send(msg).await {
@@ -245,6 +258,39 @@ pub(crate) async fn handle_websocket(
             }
         }
     });
+}
+
+async fn handle_execution(
+    execute_command: ExecuteCommand,
+    session: SharedSession,
+    bcast_tx: broadcast::Sender<ServerMessage>,
+    container_factory: SharedContainerFactory,
+) {
+    let container_msg = ContainerMessage::Execute(execute_command);
+    let (container_response_tx, mut container_response_rx) =
+        mpsc::channel(CONTAINER_RESPONSE_MSG_LIMIT);
+    // TODO: Return proper error to the user on error via ws
+    run_code(
+        container_msg,
+        Arc::clone(&session),
+        Arc::clone(&container_factory),
+        container_response_tx,
+    )
+    .await
+    .unwrap();
+
+    while let Some(container_response) = container_response_rx.recv().await {
+        let runner_output = container_response_to_runner_output(&container_response);
+        let msg = ServerMessage::Run(runner_output);
+        log::debug!("Sending run output to clients: {msg:?}");
+        // Broadcast the message to other clients
+        if let Err(e) = bcast_tx.send(msg) {
+            // Not an error, just means all receiver handles have been closed
+            log::info!("All receiver handles have been closed. {e:?}");
+            // Handle error (e.g., all receiver handles have been closed)
+            return;
+        }
+    }
 }
 
 enum RemoveUsersRet {

@@ -4,7 +4,6 @@ use wasm_bindgen::prelude::*;
 
 use corust_transforms::xforms::{TextOperation, TextUpdate};
 use serde::{Deserialize, Serialize};
-use std::process::Output;
 use std::str::FromStr;
 
 /// Represents a local document update, sent to the server
@@ -203,10 +202,12 @@ impl ClientResponseData {
 }
 
 /// Message types that can be broadcast via internal server broadcast channel
+// Does not use `#[serde(tag = "type")]` due to error deserializing inner HashMap
+// types where the key is not a String.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum ServerMessage {
     RemoteUpdate(RemoteUpdate),
-    Compile(RunnerOutput),
+    Run(RunnerOutput),
     Snapshot(Snapshot),
     // Split into separate message so it is usable across snapshot, updates,
     // and pruning non-gracefully disconnected users. When paired with a snapshot
@@ -226,47 +227,48 @@ pub struct Snapshot {
 
 // API for execution output
 #[derive(Deserialize, Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct RunnerOutput {
-    stdout: String,
-    stderr: String,
-    status: i32,
+    pub run_type: String,
+    pub stdout: String,
+    pub stderr: String,
+    pub exit_code: Option<i32>,
 }
 
-impl RunnerOutput {
-    pub fn new(stdout: String, stderr: String, status: i32) -> Self {
-        RunnerOutput {
-            stdout,
-            stderr,
-            status,
-        }
-    }
+// impl RunnerOutput {
+//     pub fn new(run_type: String, stdout: String, stderr: String, status: i32) -> Self {
+//         RunnerOutput {
+//             run_type,
+//             stdout,
+//             stderr,
+//             status,
+//         }
+//     }
 
-    pub fn stdout(&self) -> &str {
-        &self.stdout
-    }
+//     pub fn stdout(&self) -> &str {
+//         &self.stdout
+//     }
 
-    pub fn stderr(&self) -> &str {
-        &self.stderr
-    }
+//     pub fn stderr(&self) -> &str {
+//         &self.stderr
+//     }
 
-    pub fn status(&self) -> i32 {
-        self.status
-    }
-}
+//     pub fn status(&self) -> i32 {
+//         self.status
+//     }
 
-impl From<Output> for RunnerOutput {
-    fn from(output: Output) -> Self {
-        let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        let status = output
-            .status
-            .code()
-            .unwrap_or_else(|| panic!("Error getting status code from output: {}", output.status));
+//     pub fn run_type(&self) -> &str {
+//         &self.run_type
+//     }
 
-        RunnerOutput {
-            stdout,
-            stderr,
-            status,
-        }
-    }
-}
+//     pub fn from_output(output: Output, run_type: String) -> Self {
+//         RunnerOutput {
+//             run_type,
+//             stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+//             stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+//             status: output.status.code().unwrap_or_else(|| {
+//                 panic!("Error getting status code from output: {}", output.status)
+//             }),
+//         }
+//     }
+// }

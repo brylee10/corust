@@ -35,8 +35,9 @@ import {
 } from "corust-components/corust_components.js";
 import { useParams } from "react-router-dom";
 import UserIconList from "./components/userIconList";
-import { Alert, Button, Fade, styled } from "@mui/material";
+import { Alert, Button, Snackbar, styled, Grow } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import { RunOutputDisplay, RunOutput } from "./components/runOutputDisplay";
 
 // Define constants once
 const CustomButton = styled(Button)({
@@ -47,9 +48,6 @@ const CustomButton = styled(Button)({
   borderRadius: "5px",
   cursor: "pointer",
   alignSelf: "flex-start",
-  marginTop: "10px",
-  marginLeft: "10px",
-  marginRight: "10px",
   fontWeight: "bold",
   lineHeight: "1.25",
   "&:hover": {
@@ -97,13 +95,6 @@ interface BroadcastLocalDocUpdate {
 // Code section
 interface CodeContainerText {
   code: string;
-}
-
-// Output of the compilation + runner
-interface RunnerOutput {
-  stdout: string;
-  stderr: string;
-  status: number;
 }
 
 // Text selection range (start <= end)
@@ -155,6 +146,8 @@ interface RustExecuteCommand {
   cargoCommand: CargoCommand;
 }
 
+type ServerMessageType = "RemoteUpdate" | "Run" | "Snapshot" | "UserList";
+
 // Utilities
 const docUpdateToRust = (msg: DocUpdateWrapper): RustDocUpdate => {
   return {
@@ -176,7 +169,8 @@ function App({ userId }: AppProps) {
   // Route params
   const params = useParams();
   // CargoOutput has schema: Object {stdout: string, stderr: string, status: number}
-  const [cargoOutput, setCargoOutput] = useState<RunnerOutput | null>(null);
+  const [runOutput, setRunOutput] = useState<RunOutput | null>(null);
+  const [showCargoOutput, setShowCargoOutput] = useState<boolean>(false);
   const [codeContainerText, setCodeContainerText] = useState<CodeContainerText>(
     {
       code: "",
@@ -196,7 +190,7 @@ function App({ userId }: AppProps) {
   // CodeMirror view
   const [view, setView] = useState<EditorView | undefined>(undefined);
   // Event listeners capture static state, so we need to use refs for indirection to the latest state
-  const cargoOutputRef = useRef(cargoOutput);
+  const cargoOutputRef = useRef(runOutput);
   const codeContainerTextRef = useRef(codeContainerText);
   const clientRef = useRef(client);
   const ws = useRef<WebSocket | null>(null);
@@ -263,6 +257,7 @@ function App({ userId }: AppProps) {
         `ws://127.0.0.1:8000/websocket/${params.sessionId}/${client.user_id()}`
       );
 
+      // Signal used to remove event listeners on component unmount
       const controller = new AbortController();
       const signal = controller.signal;
 
@@ -280,73 +275,96 @@ function App({ userId }: AppProps) {
       newSocket.addEventListener(
         "message",
         function (event) {
-          // Decode the collaborative code update in the ws message and set it to `code`
-          try {
-            const serverMessage: ServerMessage = event.data;
-            const clientResponse: ClientResponse | undefined =
-              clientRef.current.handle_server_message(serverMessage);
-            console.debug("Received client response: ", clientResponse);
+          const serverMessage: ServerMessage = event.data;
+          const serverMessageObj = JSON.parse(serverMessage);
+          // Corresponds to rust `ServerMessage` enum variant
+          const type: ServerMessageType = Object.keys(
+            serverMessageObj
+          )[0] as ServerMessageType;
+          console.debug("Server message: ", serverMessageObj);
+          switch (type) {
+            case "RemoteUpdate":
+            case "Snapshot":
+            case "UserList":
+              // Decode the collaborative code update in the ws message and set it to `code`
+              try {
+                const clientResponse: ClientResponse | undefined =
+                  clientRef.current.handle_server_message(serverMessage);
+                console.debug("Received client response: ", clientResponse);
 
-            // Always update code container. This should not change the code container if the update is an ack to a local operation.
-            updateCollabSelections(clientRef.current);
-            setCodeContainerText({ code: clientRef.current.document() });
+                // Always update code container. This should not change the code container if the update is an ack to a local operation.
+                updateCollabSelections(clientRef.current);
+                setCodeContainerText({ code: clientRef.current.document() });
 
-            if (clientResponse) {
-              const updateType: ClientResponseType =
-                clientResponse.message_type();
-              // Send the next buffered client operation to the server if applicable
-              // (occurs when `serverMessage` is an ack to an outstanding client operation and client has another operation buffered)
-              if (updateType === ClientResponseType.BroadcastLocalDocUpdate) {
-                console.debug("Sending buffered client operation");
-                // The doc update will be a string because the tag `updateType` is `BroadcastLocalDocUpdate`
-                const docUpdate =
-                  clientResponse.get_broadcast_doc_update() as string;
-                const docUpdateWrapper: DocUpdateWrapper = {
-                  inner: {
-                    docUpdate: docUpdate,
-                  },
-                  opState: OpState.Unsent,
-                };
-                console.assert(
-                  clientRef.current.document() ===
-                    codeContainerTextRef.current.code,
-                  "Client document should match code container if the update is acking a local operation\n",
-                  "client doc - ",
-                  clientRef.current.document(),
-                  "container code - ",
-                  codeContainerTextRef.current.code
+                if (clientResponse) {
+                  const updateType: ClientResponseType =
+                    clientResponse.message_type();
+                  // Send the next buffered client operation to the server if applicable
+                  // (occurs when `serverMessage` is an ack to an outstanding client operation and client has another operation buffered)
+                  if (
+                    updateType === ClientResponseType.BroadcastLocalDocUpdate
+                  ) {
+                    console.debug("Sending buffered client operation");
+                    // The doc update will be a string because the tag `updateType` is `BroadcastLocalDocUpdate`
+                    const docUpdate =
+                      clientResponse.get_broadcast_doc_update() as string;
+                    const docUpdateWrapper: DocUpdateWrapper = {
+                      inner: {
+                        docUpdate: docUpdate,
+                      },
+                      opState: OpState.Unsent,
+                    };
+                    console.assert(
+                      clientRef.current.document() ===
+                        codeContainerTextRef.current.code,
+                      "Client document should match code container if the update is acking a local operation\n",
+                      "client doc - ",
+                      clientRef.current.document(),
+                      "container code - ",
+                      codeContainerTextRef.current.code
+                    );
+                    const docUpdateRust = docUpdateToRust(docUpdateWrapper);
+                    wsSendRef.current(docUpdateRust);
+                  } else if (updateType === ClientResponseType.UserList) {
+                    console.debug("User list update");
+                    const userList = clientResponse.get_user_list() as UserList;
+
+                    setUserArr(userList.users());
+                    console.debug("UserList: " + userList.to_string());
+                  } else if (
+                    updateType === ClientResponseType.RemoteDocUpdate
+                  ) {
+                    console.debug("Local doc update");
+                    const localDocUpdate: RemoteDocUpdate =
+                      clientResponse.get_remote_doc_update() as RemoteDocUpdate;
+                    dispatchTransaction(localDocUpdate.text_updates());
+                  } else {
+                    console.error(
+                      "Unknown client response type when : ",
+                      updateType
+                    );
+                  }
+                }
+
+                console.debug(
+                  "Post server ws message - Bridge length (should converge to 0): ",
+                  clientRef.current.buffer_len()
                 );
-                const docUpdateRust = docUpdateToRust(docUpdateWrapper);
-                wsSendRef.current(docUpdateRust);
-              } else if (updateType === ClientResponseType.UserList) {
-                console.debug("User list update");
-                const userList = clientResponse.get_user_list() as UserList;
-
-                setUserArr(userList.users());
-                console.debug("UserList: " + userList.to_string());
-              } else if (updateType === ClientResponseType.RemoteDocUpdate) {
-                console.debug("Local doc update");
-                const localDocUpdate: RemoteDocUpdate =
-                  clientResponse.get_remote_doc_update() as RemoteDocUpdate;
-                dispatchTransaction(localDocUpdate.text_updates());
-              } else {
-                console.error(
-                  "Unknown client response type when : ",
-                  updateType
-                );
+              } catch (error) {
+                if (error instanceof SyntaxError) {
+                  console.error("JSON Syntax Error:", error);
+                } else {
+                  console.error("Error parsing JSON:", error);
+                }
               }
-            }
-
-            console.debug(
-              "Post server ws message - Bridge length (should converge to 0): ",
-              clientRef.current.buffer_len()
-            );
-          } catch (error) {
-            if (error instanceof SyntaxError) {
-              console.error("JSON Syntax Error:", error);
-            } else {
-              console.error("Error parsing JSON:", error);
-            }
+              break;
+            case "Run":
+              console.debug("Received run output");
+              const runOutput = serverMessageObj[type] as RunOutput;
+              setRunOutput(runOutput);
+              break;
+            default:
+              console.error("Unknown server message type: ", type);
           }
         },
         { signal }
@@ -402,8 +420,8 @@ function App({ userId }: AppProps) {
 
   // Update Refs, does not trigger rerenders
   useEffect(() => {
-    cargoOutputRef.current = cargoOutput;
-  }, [cargoOutput]);
+    cargoOutputRef.current = runOutput;
+  }, [runOutput]);
 
   useEffect(() => {
     codeContainerTextRef.current = codeContainerText;
@@ -427,13 +445,6 @@ function App({ userId }: AppProps) {
     console.debug("Sending execute command over ws: ", executeCommand);
     wsSend(executeCommandObj);
   }, [codeContainerText.code, wsSend]);
-
-  const formatCargoOutput = (cargoOutput: RunnerOutput | null) => {
-    if (!cargoOutput) {
-      return "";
-    }
-    return `stdout: \n${cargoOutput.stdout}\nstderr: \n${cargoOutput.stderr}\nstatus: \n${cargoOutput.status}`;
-  };
 
   const handleEditorChange = useCallback(
     (viewUpdate: ViewUpdate) => {
@@ -790,6 +801,7 @@ function App({ userId }: AppProps) {
             variant="contained"
             size="small"
             onClick={() => {
+              setShowCargoOutput(true);
               compileCode();
             }}
             endIcon={<PlayArrowIcon />}
@@ -808,19 +820,16 @@ function App({ userId }: AppProps) {
           setView(view);
         }}
       />
-      {!wsOpen ? (
+      {showCargoOutput ? <RunOutputDisplay runOutput={runOutput} /> : null}
+      <Snackbar
+        open={!wsOpen}
+        TransitionComponent={Grow}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
         <Alert severity="error">
           Disconnected from server. Please refresh the page to rejoin.
         </Alert>
-      ) : null}
-      {/* <div className="editor-container">
-        <textarea
-          className="compile-output editor-right"
-          value={formatCargoOutput(cargoOutput)}
-          readOnly
-          placeholder="Cargo Output"
-        />
-      </div> */}
+      </Snackbar>
     </div>
   );
 }
