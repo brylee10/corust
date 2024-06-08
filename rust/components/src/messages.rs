@@ -208,11 +208,37 @@ impl ClientResponseData {
 pub enum ServerMessage {
     RemoteUpdate(RemoteUpdate),
     Run(RunnerOutput),
+    RunStatus(RunStatus),
     Snapshot(Snapshot),
     // Split into separate message so it is usable across snapshot, updates,
     // and pruning non-gracefully disconnected users. When paired with a snapshot
     // or state update, the UserList is sent AFTER
     UserList(UserList),
+}
+
+/// Represents the status of a run, similar to run metadata. Also functions as
+/// error response messages to requests to execute code.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunStatus {
+    pub run_type: String,
+    pub run_state_update: RunStateUpdate,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub enum RunStateUpdate {
+    /// Indicates run in progress
+    RunStarted,
+    /// Indicates run finished
+    RunEnded,
+    /// Indicates run already in progress. Concurrent runs are disallowed.
+    ConcurrentCompilation,
+    /// Client state not up to date with the server state. Only code that is
+    /// up to date with the server can be executed. This encourages collaborators to
+    /// pause updating the code before running it so it is clear what code is being run.
+    ClientStateOutOfSync,
+    /// Indicates output size too large
+    StdoutErrTooLarge,
 }
 
 /// Message sent to late joiners to sync their document

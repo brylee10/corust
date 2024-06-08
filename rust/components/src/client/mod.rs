@@ -304,7 +304,7 @@ impl Client {
                     ))
                 }
             }
-            ServerMessage::Run(_) => None,
+            ServerMessage::Run(_) | ServerMessage::RunStatus(_) => None,
             ServerMessage::Snapshot(snapshot) => {
                 self.document = snapshot.document.to_string();
                 self.cursor_map = snapshot.cursor_map.clone();
@@ -397,7 +397,6 @@ impl Client {
                 debug_assert!(remote_update.state_id == self.last_server_state_id + 1);
                 self.last_server_state_id = remote_update.state_id;
             }
-            ServerMessage::Run(_) => {}
             ServerMessage::Snapshot(snapshot) => {
                 // Snapshots should occur when the client is a late joiner
                 debug_assert!(self.last_server_state_id == 0);
@@ -408,8 +407,8 @@ impl Client {
                 ));
                 self.last_server_state_id = snapshot.state_id;
             }
-            ServerMessage::UserList(_) => {
-                // UserList does represent a doc or cursor map update so it does not hold a state ID
+            ServerMessage::Run(_) | ServerMessage::RunStatus(_) | ServerMessage::UserList(_) => {
+                // Run messages and UserList do represent a doc or cursor map update so it does not hold a state ID
             }
         }
     }

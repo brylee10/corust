@@ -2,14 +2,15 @@ use std::sync::Arc;
 
 use corust_components::network::{UserId, UserList};
 use corust_components::BroadcastLocalDocUpdate;
-use corust_sandbox::container::{ContainerMessage, ExecuteCommand};
+use corust_sandbox::container::{ContainerError, ContainerMessage, ExecuteCommand};
 use futures_util::stream::{SplitSink, StreamExt};
 use futures_util::SinkExt;
 use serde::{Deserialize, Serialize};
-use tokio::sync::{broadcast, mpsc};
+use tokio::sync::{broadcast, mpsc, Mutex};
 
 use crate::execute::runner::{
-    container_response_to_runner_output, run_code, SharedContainerFactory,
+    bcast_notify_output_size_error, container_response_to_runner_output, run_code,
+    ws_notify_concurrent_code_error, RunCodeError, RunType, SharedContainerFactory,
 };
 use crate::messages::*;
 use crate::sessions::{SessionId, SharedSession, SharedSessionMap};
@@ -32,6 +33,8 @@ const CHECK_INACTIVE_USERS_SEC: u64 = 30;
 // Number of [`ContainerResponse`] messages that can be bufferred from a running container
 // in the channel
 const CONTAINER_RESPONSE_MSG_LIMIT: usize = 8;
+
+pub type SharedWsSender = Arc<Mutex<SplitSink<WebSocket, Message>>>;
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(tag = "type")]
@@ -83,6 +86,7 @@ pub(crate) async fn handle_websocket(
         }
     }
 
+    let shared_ws_tx = Arc::new(Mutex::new(ws_tx));
     let mut ping_timer = tokio::time::interval(Duration::from_secs(PING_INTERVAL_SEC));
     let mut check_inactive_users =
         tokio::time::interval(Duration::from_secs(CHECK_INACTIVE_USERS_SEC));
@@ -141,8 +145,9 @@ pub(crate) async fn handle_websocket(
                                             let session = Arc::clone(&session);
                                             let container_factory = Arc::clone(&container_factory);
                                             let bcast_tx = bcast_tx.clone();
+                                            let shared_ws_tx = Arc::clone(&shared_ws_tx);
                                             tokio::spawn(async move {
-                                                handle_execution(execute_command, session, bcast_tx, container_factory).await;
+                                                handle_execution(execute_command, session, bcast_tx, container_factory, shared_ws_tx).await;
                                             });
                                         }
                                     };
@@ -203,11 +208,10 @@ pub(crate) async fn handle_websocket(
                     // Receive broadcast messages, forward to client
                     match msg {
                         Ok(msg) => {
-                            log::debug!("Broadcasting pre-serialized message: {msg:?}");
                             let msg = serde_json::to_string(&msg).unwrap_or_else(|e| panic!("Error serializing string {msg:?}, error {e}"));
-                            log::debug!("Broadcasting serialized message: {msg:?}");
                             let msg: Message = Message::text(msg);
-                            log::debug!("Sending message to clients: {msg:?}");
+                            log::trace!("Sending message to clients: {msg:?}");
+                            let mut ws_tx = shared_ws_tx.lock().await;
                             if let Err(e) = ws_tx.send(msg).await {
                                 log::info!("Sending error, all receiver handles have been closed. {e:?}");
                                 // Handle error (e.g., all receiver handles have been closed)
@@ -230,6 +234,7 @@ pub(crate) async fn handle_websocket(
                 }
                 _ = ping_timer.tick() => {
                     log::debug!("Sending ping to user ID {user_id} in session ID {session_id}");
+                    let mut ws_tx = shared_ws_tx.lock().await;
                     if let Err(e) = ws_tx.send(Message::ping(Vec::new())).await {
                         log::error!("Failed to send ping: {e}");
                         return;  // Exit the task if the websocket is closed or an error occurs
@@ -247,7 +252,7 @@ pub(crate) async fn handle_websocket(
                     }
                 },
                 _ = check_inactive_users.tick() => {
-                    match remove_inactive_users(&session_id, Arc::clone(&server), user_id, &mut ws_tx).await {
+                    match remove_inactive_users(&session_id, Arc::clone(&server), user_id, Arc::clone(&shared_ws_tx)).await {
                         RemoveUsersRet::RemoveSelf => {
                             // Exit from `select!` because current user is inactive
                             return;
@@ -265,32 +270,59 @@ async fn handle_execution(
     session: SharedSession,
     bcast_tx: broadcast::Sender<ServerMessage>,
     container_factory: SharedContainerFactory,
+    shared_ws_tx: SharedWsSender,
 ) {
     let container_msg = ContainerMessage::Execute(execute_command);
     let (container_response_tx, mut container_response_rx) =
         mpsc::channel(CONTAINER_RESPONSE_MSG_LIMIT);
-    // TODO: Return proper error to the user on error via ws
-    run_code(
-        container_msg,
-        Arc::clone(&session),
-        Arc::clone(&container_factory),
-        container_response_tx,
-    )
-    .await
-    .unwrap();
+
+    let handle = tokio::spawn({
+        let bcast_tx = bcast_tx.clone();
+        async move {
+            run_code(
+                container_msg,
+                Arc::clone(&session),
+                Arc::clone(&container_factory),
+                container_response_tx,
+                bcast_tx,
+            )
+            .await
+        }
+    });
 
     while let Some(container_response) = container_response_rx.recv().await {
         let runner_output = container_response_to_runner_output(&container_response);
         let msg = ServerMessage::Run(runner_output);
-        log::debug!("Sending run output to clients: {msg:?}");
+        log::debug!("Sending run output to clients");
+        log::trace!("{msg:?}");
         // Broadcast the message to other clients
         if let Err(e) = bcast_tx.send(msg) {
             // Not an error, just means all receiver handles have been closed
-            log::info!("All receiver handles have been closed. {e:?}");
+            log::debug!("All receiver handles have been closed. {e:?}");
             // Handle error (e.g., all receiver handles have been closed)
-            return;
+            break;
         }
     }
+    // This should exit immediately since the container response channel is closed
+    log::debug!("Waiting for task execution to complete");
+    match handle.await.unwrap() {
+        Ok(_) => {}
+        Err(e) => {
+            log::error!("Error running code: {e:?}");
+            match e {
+                RunCodeError::ConcurrentCompilation(run_type) => {
+                    // Broadcast error back to client
+                    ws_notify_concurrent_code_error(shared_ws_tx, run_type).await;
+                }
+                RunCodeError::ContainerError(ContainerError::StderrTooLarge { .. })
+                | RunCodeError::ContainerError(ContainerError::StdoutTooLarge { .. }) => {
+                    // TODO: Use the correct execute type or make runtype optional in the ws message
+                    bcast_notify_output_size_error(bcast_tx.clone(), RunType::Execute).await;
+                }
+                _ => {}
+            }
+        }
+    };
 }
 
 enum RemoveUsersRet {
@@ -302,7 +334,7 @@ async fn remove_inactive_users(
     session_id: &SessionId,
     server: SharedServer,
     user_id: UserId,
-    ws_tx: &mut SplitSink<WebSocket, Message>,
+    ws_tx: SharedWsSender,
 ) -> RemoveUsersRet {
     log::debug!("Checking if users in session ID {session_id} are inactive");
     let mut server = server.lock().await;
@@ -331,6 +363,7 @@ async fn remove_inactive_users(
 
     if users_to_remove.contains(&user_id) {
         // tx close would initiate close handshake with client, but
+        let mut ws_tx = ws_tx.lock().await;
         match ws_tx.close().await {
             Ok(_) => {
                 log::debug!("Closed websocket for inactive current user {user_id} from session ID {session_id}");

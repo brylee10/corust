@@ -35,14 +35,22 @@ import {
 } from "corust-components/corust_components.js";
 import { useParams } from "react-router-dom";
 import UserIconList from "./components/userIconList";
-import { Alert, Button, Snackbar, styled, Grow } from "@mui/material";
+import { Alert, Button, Snackbar, styled, Grow, Tooltip } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
-import { RunOutputDisplay, RunOutput } from "./components/runOutputDisplay";
+import {
+  RunOutputDisplay,
+  RunOutput,
+  RunStatus,
+  RunState,
+  updateRunStatus,
+  ServerRunStatus,
+} from "./components/runOutputDisplay";
 
 // Define constants once
 const CustomButton = styled(Button)({
   padding: "10px 20px",
-  backgroundColor: "green",
+  // Rust!
+  backgroundColor: "#CE422B",
   color: "white",
   border: "none",
   borderRadius: "5px",
@@ -51,7 +59,23 @@ const CustomButton = styled(Button)({
   fontWeight: "bold",
   lineHeight: "1.25",
   "&:hover": {
-    backgroundColor: "green",
+    backgroundColor: "#CE422B",
+  },
+});
+
+const DisabledButton = styled(Button)({
+  padding: "10px 20px",
+  backgroundColor: "gray",
+  color: "white",
+  border: "none",
+  // Do not show a cursor helper
+  cursor: "default",
+  borderRadius: "5px",
+  alignSelf: "flex-start",
+  fontWeight: "bold",
+  lineHeight: "1.25",
+  "&:hover": {
+    backgroundColor: "gray",
   },
 });
 
@@ -146,7 +170,12 @@ interface RustExecuteCommand {
   cargoCommand: CargoCommand;
 }
 
-type ServerMessageType = "RemoteUpdate" | "Run" | "Snapshot" | "UserList";
+type ServerMessageType =
+  | "RemoteUpdate"
+  | "Run"
+  | "RunStatus"
+  | "Snapshot"
+  | "UserList";
 
 // Utilities
 const docUpdateToRust = (msg: DocUpdateWrapper): RustDocUpdate => {
@@ -170,6 +199,7 @@ function App({ userId }: AppProps) {
   const params = useParams();
   // CargoOutput has schema: Object {stdout: string, stderr: string, status: number}
   const [runOutput, setRunOutput] = useState<RunOutput | null>(null);
+  const [runStatus, setRunStatus] = useState<RunStatus | null>(null);
   const [showCargoOutput, setShowCargoOutput] = useState<boolean>(false);
   const [codeContainerText, setCodeContainerText] = useState<CodeContainerText>(
     {
@@ -359,9 +389,27 @@ function App({ userId }: AppProps) {
               }
               break;
             case "Run":
-              console.debug("Received run output");
               const runOutput = serverMessageObj[type] as RunOutput;
+              console.debug("Received run output: ", runOutput);
               setRunOutput(runOutput);
+              break;
+            case "RunStatus":
+              const serverRunStatus = serverMessageObj[type] as ServerRunStatus;
+              console.debug(
+                "Received server run status message: ",
+                serverRunStatus
+              );
+              setRunStatus((prev) =>
+                updateRunStatus(
+                  serverRunStatus.runType,
+                  serverRunStatus.runStateUpdate,
+                  prev
+                )
+              );
+              // A `RunStatus` message (particularly `RunStateUpdate` = `RunStarted`) indicates the start of a run,
+              // so cargo output should be shown. A `RunStatus` message will precede any `Run` message, so toggling here
+              // is sufficient and preferrable over toggling in the `Run` message handler.
+              setShowCargoOutput(true);
               break;
             default:
               console.error("Unknown server message type: ", type);
@@ -793,22 +841,43 @@ function App({ userId }: AppProps) {
     textHighlightDecoration,
   ]);
 
+  const renderRunButton = useCallback(() => {
+    const enabledButton = (
+      <>
+        <CustomButton
+          variant="contained"
+          size="small"
+          onClick={() => {
+            setShowCargoOutput(true);
+            compileCode();
+          }}
+          endIcon={<PlayArrowIcon />}
+        >
+          RUN
+        </CustomButton>
+      </>
+    );
+
+    const disabledButton = (
+      <Tooltip title="Code executing, cannot start simultaneous run.">
+        <DisabledButton
+          variant="contained"
+          size="small"
+          endIcon={<PlayArrowIcon />}
+        >
+          RUN
+        </DisabledButton>
+      </Tooltip>
+    );
+    return runStatus?.runState !== RunState.Running
+      ? enabledButton
+      : disabledButton;
+  }, [compileCode, runStatus]);
+
   return (
     <div className="App">
       <div className="header-bar">
-        <div>
-          <CustomButton
-            variant="contained"
-            size="small"
-            onClick={() => {
-              setShowCargoOutput(true);
-              compileCode();
-            }}
-            endIcon={<PlayArrowIcon />}
-          >
-            RUN
-          </CustomButton>
-        </div>
+        <div>{renderRunButton()}</div>
         <UserIconList userArr={userArr} selfUserId={client.user_id()} />
       </div>
       <CodeMirror
@@ -820,7 +889,9 @@ function App({ userId }: AppProps) {
           setView(view);
         }}
       />
-      {showCargoOutput ? <RunOutputDisplay runOutput={runOutput} /> : null}
+      {showCargoOutput ? (
+        <RunOutputDisplay runOutput={runOutput} runStatus={runStatus} />
+      ) : null}
       <Snackbar
         open={!wsOpen}
         TransitionComponent={Grow}

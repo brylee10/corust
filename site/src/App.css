@@ -25,8 +25,8 @@
 .runner-output {
   font-size: 16px;
   border-radius: 4px;
-  /* A light calm green */
-  background: #f7fff6;
+  /* A light calm Rust */
+  background: #fefaf9;
   margin-top: 10px;
   padding-left: 10px;
   padding-right: 10px;
@@ -42,6 +42,8 @@
   flex-direction: row;
   /* Padding from following stderr/stdout outputs*/
   padding-bottom: 10px;
+  /* Scrolls when output is large */
+  overflow: auto;
 }
 
 /* Hide the output when closed */
@@ -63,9 +65,6 @@
   justify-content: center;
   align-items: center;
   padding: 8px;
-}
-
-.runner-output .body {
 }
 
 .runner-output .body .subtitle {
@@ -93,6 +92,7 @@
 .runner-output .body .content {
   font-family: "Source Code Pro", monospace; /* Popular code editor fonts */
   padding-bottom: 8px;
+  white-space: pre-line;
 }
 
 .runner-output .close {
@@ -107,4 +107,37 @@
   display: flex;
   flex-direction: row;
   justify-content: space-between;
+}
+
+/* 
+Dots shift 4 px and fade to 0.1 opacity, offset equally, cycling every 0.6s 
+Credit to: https://dev.to/kirteshbansal/bouncing-dots-loader-in-react-4jng
+*/
+.bouncing-loader {
+  display: flex;
+}
+
+.bouncing-loader > div {
+  width: 8px;
+  height: 8px;
+  margin: 3px 6px;
+  border-radius: 50%;
+  background-color: #a3a1a1;
+  opacity: 1;
+  animation: bouncing-loader 0.6s infinite alternate;
+}
+
+@keyframes bouncing-loader {
+  to {
+    opacity: 0.1;
+    transform: translateY(-4px);
+  }
+}
+
+.bouncing-loader > div:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.bouncing-loader > div:nth-child(3) {
+  animation-delay: 0.4s;
 }

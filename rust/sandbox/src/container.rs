@@ -24,6 +24,9 @@ use tokio::{
 use crate::MESSAGE_BUF_SIZE_BYTES;
 
 pub const IO_COMPONENT_CHANNEL_SIZE: usize = 100;
+// Max number of bytes a stdout/stderr can be before the process is killed
+// This limit should be sufficient for any reasonable output
+const STDOUT_ERR_BYTE_LIMIT: usize = 64_000;
 
 #[derive(Debug, Snafu)]
 pub enum ContainerError {
@@ -56,6 +59,24 @@ pub enum ContainerError {
     #[snafu(display("Send message error: {}", source))]
     SendMessage {
         source: mpsc::error::SendError<ContainerResponse>,
+    },
+    #[snafu(display(
+        "Stdout too large. Max bytes {}, received {}",
+        max_bytes,
+        received_bytes
+    ))]
+    StdoutTooLarge {
+        max_bytes: usize,
+        received_bytes: usize,
+    },
+    #[snafu(display(
+        "Stderr too large. Max bytes {}, received {}",
+        max_bytes,
+        received_bytes
+    ))]
+    StderrTooLarge {
+        max_bytes: usize,
+        received_bytes: usize,
     },
 }
 
@@ -112,7 +133,9 @@ pub enum ContainerMessage {
 }
 
 // Mirrors `std::process::Output`
-#[derive(Debug, Serialize, Deserialize, Clone)]
+// Implements `Default` to send a clear responses at the start of all executions.
+// All executions start with empty stdout and stderr, clearing output from prior runs.
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
 pub struct ExecuteResponse {
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
@@ -338,7 +361,8 @@ pub struct ChildIo {
     // Handles to tasks sending to stdin and receiving from stdout and stderr
     pub tasks: JoinSet<Result<()>>,
     // Send messages to component stdin
-    pub child_stdin_tx: mpsc::Sender<ContainerMessage>,
+    // Option<T> so it can be taken out of the struct and manually dropped
+    pub child_stdin_tx: Option<mpsc::Sender<ContainerMessage>>,
     // Receive responses to messages from component stdout
     pub child_stdout_rx: mpsc::Receiver<ContainerResponse>,
 }
@@ -401,11 +425,32 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
             }
 
             let msg = bincode::deserialize(&msg_buf).context(BincodeSnafu)?;
-            log::debug!(
+            log::trace!(
                 "Received message of size {:?} bytes from stdout, msg: {}",
                 msg_sz_bytes,
                 msg
             );
+
+            // Check if the stdout/stderr is too large
+            match &msg {
+                ContainerResponse::Execute(ExecuteResponse { stdout, stderr, .. }) => {
+                    if stdout.len() > STDOUT_ERR_BYTE_LIMIT {
+                        log::error!("stdout/stderr too large, killing container");
+                        return Err(ContainerError::StdoutTooLarge {
+                            max_bytes: STDOUT_ERR_BYTE_LIMIT,
+                            received_bytes: stdout.len(),
+                        });
+                    }
+
+                    if stderr.len() > STDOUT_ERR_BYTE_LIMIT {
+                        log::error!("stderr too large, killing container");
+                        return Err(ContainerError::StderrTooLarge {
+                            max_bytes: STDOUT_ERR_BYTE_LIMIT,
+                            received_bytes: stderr.len(),
+                        });
+                    }
+                }
+            }
             child_stdout_tx.send(msg).await.context(SendMessageSnafu)?;
         }
     });
@@ -414,7 +459,7 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
     tasks.spawn(async move {
         let mut stdin = BufWriter::new(stdin);
         while let Some(msg) = child_stdin_rx.recv().await {
-            log::debug!("Received message `msg` in stdin receiver: {:?}", msg);
+            log::trace!("Received message `msg` in stdin receiver: {:?}", msg);
             // Serialize message into buffer, with a 4 byte prefix for the size of the message
             // as required by `AsyncBincodeReader`:
             // https://docs.rs/async-bincode/latest/async_bincode/futures/struct.AsyncBincodeReader.html
@@ -435,6 +480,7 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
             stdin.flush().await.unwrap();
             log::debug!("Flushed message to container");
         }
+        log::debug!("stdin receiver finished");
         Ok(())
     });
 
@@ -444,12 +490,13 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
         while let Some(line) = stderr.next_line().await.context(ReadStderrSnafu)? {
             log::debug!("{:?}", line);
         }
+        log::debug!("stderr receiver finished");
         Ok(())
     });
 
     Ok(ChildIo {
         tasks,
-        child_stdin_tx,
+        child_stdin_tx: Some(child_stdin_tx),
         child_stdout_rx,
     })
 }
@@ -472,7 +519,7 @@ mod test {
     static INIT_RUST_PROJECT: Once = Once::new();
     static INIT_ENV_LOGGER: Once = Once::new();
     const TEST_MAX_CONCURRENT_CONTAINERS: usize = 2;
-    const TEST_TIMEOUT_SEC: u64 = 60;
+    const TEST_TIMEOUT_SEC: u64 = 10;
 
     struct TestContainerBackend {
         // Own temp dir so the directory is not dropped until the backend is dropped
@@ -557,7 +604,13 @@ mod test {
             CargoCommand::Run,
         );
         let message = ContainerMessage::Execute(execute_command);
-        child_io.child_stdin_tx.send(message).await.unwrap();
+        child_io
+            .child_stdin_tx
+            .as_ref()
+            .unwrap()
+            .send(message)
+            .await
+            .unwrap();
         // Sends second `ExecuteCommand` to test it is ignored because runner does not process any
         // stdin messages after first `ExecuteCommand`.
         let execute_command = ExecuteCommand::new(
@@ -569,7 +622,13 @@ mod test {
             CargoCommand::Run,
         );
         let message = ContainerMessage::Execute(execute_command);
-        child_io.child_stdin_tx.send(message).await.unwrap();
+        child_io
+            .child_stdin_tx
+            .as_ref()
+            .unwrap()
+            .send(message)
+            .await
+            .unwrap();
 
         let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
         assert!(exit_code.success());
@@ -608,7 +667,13 @@ mod test {
             CargoCommand::Run,
         );
         let message = ContainerMessage::Execute(execute_command);
-        child_io.child_stdin_tx.send(message).await.unwrap();
+        child_io
+            .child_stdin_tx
+            .as_ref()
+            .unwrap()
+            .send(message)
+            .await
+            .unwrap();
 
         let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
         assert!(exit_code.success());
@@ -630,6 +695,8 @@ mod test {
 
     #[tokio::test]
     async fn test_long_test_error() {
+        // "A meta test". Tests that the test infrastructure helper `with_timeout` works properly by timing out
+        // any task that takes longer than `TEST_TIMEOUT_SEC` seconds.
         let res = tokio::time::sleep(std::time::Duration::from_secs(TEST_TIMEOUT_SEC + 1))
             .with_timeout()
             .await;
