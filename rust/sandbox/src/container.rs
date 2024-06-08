@@ -516,7 +516,6 @@ mod test {
     use super::*;
 
     static INIT_TEST_RUNNER: Once = Once::new();
-    static INIT_RUST_PROJECT: Once = Once::new();
     static INIT_ENV_LOGGER: Once = Once::new();
     const TEST_MAX_CONCURRENT_CONTAINERS: usize = 2;
     const TEST_TIMEOUT_SEC: u64 = 10;
@@ -542,14 +541,13 @@ mod test {
                     .expect("Failed to build test runner");
             });
 
-            INIT_RUST_PROJECT.call_once(|| {
-                // Initialize a rust project in the test project directory
-                let mut cmd = std::process::Command::new("cargo");
-                cmd.current_dir(&test_project_dir)
-                    .arg("init")
-                    .output()
-                    .expect("Failed to initialize rust project");
-            });
+            // Initialize a rust project in the test project directory. This occurs once per
+            // test since the `TestContainerBackend` and `test_project_dir` is different for each.
+            let mut cmd = std::process::Command::new("cargo");
+            cmd.current_dir(&test_project_dir)
+                .arg("init")
+                .output()
+                .expect("Failed to initialize rust project");
 
             TestContainerBackend {
                 _temp_dir: temp_dir,

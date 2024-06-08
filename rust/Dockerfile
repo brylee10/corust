@@ -29,10 +29,12 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- \
     --component clippy \
     --component rust-src
 
-COPY --chown=corust entrypoint.sh /corust/tools/
 # Install the `runner` binary which copies user code into the container and runs it 
 COPY --chown=corust sandbox /sandbox
 RUN cargo install --path /sandbox
+COPY --chown=corust entrypoint.sh /corust/tools/
+# Make the entrypoint script executable
+RUN chmod +x /corust/tools/entrypoint.sh
 
 # Copy the `Cargo.toml` and build the Rust project in which user code will be run
 WORKDIR /corust
