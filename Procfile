@@ -1,1 +1,1 @@
-web: ./rust/target/release/main
+web: ./target/release/main
