@@ -1,0 +1,1 @@
+web: ./rust/target/release/main
