@@ -52,12 +52,8 @@ async fn main() {
     let websocket_route = websocket_route(Arc::clone(&session_map), Arc::clone(&container_factory));
     let user_join_route = user_join_route(Arc::clone(&session_map));
 
-    let host = std::env::var("WS_SERVER_HOST").unwrap();
-    let port: u16 = std::env::var("WS_SERVER_PORT")
-        .unwrap()
-        .parse()
-        .expect("WS_SERVER_PORT must be a number");
-    let cors_origin = std::env::var("FRONT_END_URI").unwrap();
+    let cors_origin = std::env::var("FRONT_END_URI")
+        .unwrap_or_else(|e| panic!("FRONT_END_URI must be set, {}", e));
     log::info!("CORS origin set to: {}", cors_origin);
     let cors = warp::cors()
         .allow_origin(cors_origin.as_str())
@@ -67,7 +63,8 @@ async fn main() {
 
     let routes = websocket_route.or(user_join_route).with(cors);
 
-    let addr = format!("{}:{}", host, port);
+    let addr = std::env::var("WS_SERVER_URI")
+        .unwrap_or_else(|e| panic!("WS_SERVER_URI must be set, {}", e));
     let socket_addr: SocketAddr = addr.parse().expect("Invalid socket address");
     warp::serve(routes).run(socket_addr).await;
 }

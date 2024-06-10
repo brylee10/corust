@@ -3,3 +3,6 @@ target
 
 # IDE configurations
 .vscode
+
+# Development environment variables
+.env
