@@ -19,7 +19,8 @@ const MAX_CONCURRENT_CONTAINERS: usize = 100;
 
 #[tokio::main]
 async fn main() {
-    dotenv::dotenv().unwrap();
+    // Will resolve to `None` in prod where `.env` is not present
+    dotenv::dotenv().ok();
 
     let mut builder = Builder::from_default_env();
     builder
