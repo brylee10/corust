@@ -13,6 +13,7 @@ ansi_term                   = "0.12"
 anyhow                      = "1.0"
 corust-components           = { version = "*", path = "../components" }
 corust-sandbox              = { version = "*", path = "../sandbox" }
+dotenv                      = "0.15"
 env_logger                  = "0.11"
 fnv                         = "1.0"
 futures-util                = "0.3"

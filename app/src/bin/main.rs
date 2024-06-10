@@ -1,6 +1,8 @@
+use std::net::SocketAddr;
 use std::sync::Arc;
 
 use ansi_term::Color;
+use dotenv;
 use env_logger::Builder;
 use log::Level;
 use tokio::sync::Mutex;
@@ -17,6 +19,8 @@ const MAX_CONCURRENT_CONTAINERS: usize = 100;
 
 #[tokio::main]
 async fn main() {
+    dotenv::dotenv().unwrap();
+
     let mut builder = Builder::from_default_env();
     builder
         .format(|buf, record| {
@@ -48,12 +52,22 @@ async fn main() {
     let websocket_route = websocket_route(Arc::clone(&session_map), Arc::clone(&container_factory));
     let user_join_route = user_join_route(Arc::clone(&session_map));
 
+    let host = std::env::var("WS_SERVER_HOST").unwrap();
+    let port: u16 = std::env::var("WS_SERVER_PORT")
+        .unwrap()
+        .parse()
+        .expect("WS_SERVER_PORT must be a number");
+    let cors_origin = std::env::var("FRONT_END_URI").unwrap();
+    log::info!("CORS origin set to: {}", cors_origin);
     let cors = warp::cors()
-        .allow_any_origin()
-        .allow_methods(vec!["POST", "GET", "PUT", "DELETE"])
+        .allow_origin(cors_origin.as_str())
+        // `PUT` and `DELETE` not valid endpoints for this server
+        .allow_methods(vec!["POST", "GET"])
         .allow_headers(vec!["Authorization", "Content-Type"]);
 
     let routes = websocket_route.or(user_join_route).with(cors);
 
-    warp::serve(routes).run(([127, 0, 0, 1], 8000)).await;
+    let addr = format!("{}:{}", host, port);
+    let socket_addr: SocketAddr = addr.parse().expect("Invalid socket address");
+    warp::serve(routes).run(socket_addr).await;
 }
