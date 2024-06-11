@@ -66,6 +66,9 @@ async fn main() {
 
     let addr = std::env::var("WS_SERVER_URI")
         .unwrap_or_else(|e| panic!("WS_SERVER_URI must be set, {}", e));
-    let socket_addr: SocketAddr = addr.parse().expect("Invalid socket address");
+    let port = std::env::var("PORT").unwrap_or_else(|e| panic!("PORT must be set, {}", e));
+    log::info!("Listening on {}:{}", addr, port);
+    let socket_addr = format!("{}:{}", addr, port);
+    let socket_addr: SocketAddr = socket_addr.parse().expect("Invalid socket address");
     warp::serve(routes).run(socket_addr).await;
 }
