@@ -66,6 +66,8 @@ async fn main() {
 
     let addr = std::env::var("WS_SERVER_URI")
         .unwrap_or_else(|e| panic!("WS_SERVER_URI must be set, {}", e));
+    // Heroku sets `PORT` per web process and routes all requests to this port
+    // https://devcenter.heroku.com/articles/runtime-principles#web-servers
     let port = std::env::var("PORT").unwrap_or_else(|e| panic!("PORT must be set, {}", e));
     log::info!("Listening on {}:{}", addr, port);
     let socket_addr = format!("{}:{}", addr, port);
