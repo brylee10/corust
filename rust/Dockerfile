@@ -1,7 +1,7 @@
 # Based on Rust Playground Dockerfile
 # https://github.com/rust-lang/rust-playground/blob/main/compiler/base/Dockerfile
 
-FROM ubuntu:20.04
+FROM ubuntu:20.04 as toolchain
 
 # Install packages in non-interactive mode
 ENV DEBIAN_FRONTEND="noninteractive"
@@ -20,6 +20,7 @@ ENV PATH=/corust/.cargo/bin:$PATH
 
 # Install Rust (currently only supports stable)
 # Pre-installs common components: https://rust-lang.github.io/rustup/concepts/components.html
+# Layer is ~1GB in size and provides cargo, rustc, rustup, rustfmt, etc. 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- \
     -y \
     --profile minimal \
@@ -35,6 +36,10 @@ RUN cargo install --path /sandbox
 COPY --chown=corust entrypoint.sh /corust/tools/
 # Make the entrypoint script executable
 RUN chmod +x /corust/tools/entrypoint.sh
+
+# In this case the multi-stage docker build does not reduce image size because `toolchain` uses 
+# all prior images
+FROM toolchain
 
 # Copy the `Cargo.toml` and build the Rust project in which user code will be run
 WORKDIR /corust

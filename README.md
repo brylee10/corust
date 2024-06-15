@@ -1,3 +1,3 @@
-# Corust Server
+# Corust
 
-Server for Corust.
+Rust collaborative code editor.
