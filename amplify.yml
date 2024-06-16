@@ -8,6 +8,6 @@ frontend:
         - make build
 
   artifacts:
-    baseDirectory: webapp/dist
+    baseDirectory: site/dist
     files:
       - '**/*'
