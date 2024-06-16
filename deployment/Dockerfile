@@ -1,7 +1,8 @@
-# This Dockerfile was largely taken from the below, with minor modifications: 
+# This Dockerfile was largely taken from the below, with modifications: 
 # https://github.com/aws-samples/aws-amplify-webassembly/blob/main/ci-build-image/Dockerfile
 #
-# To give credits to the original authors, the following license and original authors are included.
+# To give credits to the original authors, the following license. The original authors are removed
+# to clarify any errors due to modifications are from the author of this repository. 
 
 #!
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.
@@ -33,19 +34,17 @@
 
 FROM node:22.3-slim
 
-LABEL author="ilagan@amazon.com"
-LABEL maintainer="ilagan@amazon.com"
-LABEL description="Custom CI build image for an AWS Amplify-hosted React webapp + Rust-based WebAssembly."
-
 # :: Rust will refers to these env vars.
 ENV RUSTUP_HOME=/usr/local/rustup \
     CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH
 
 # :: Update + install necessary tooling first (see above).
+# Installs additional `tar` to unpack wasm-opt.
 RUN apt update \
     && apt install -y curl git \
-    && apt install -y --no-install-recommends ca-certificates gcc libc6-dev make
+    && apt install -y --no-install-recommends ca-certificates gcc libc6-dev make \
+    && apt install -y tar
 
 # :: Install rust via the rustup script.
 #    This will install both the Rust compiler (rustc) and Cargo (cargo).
@@ -61,9 +60,17 @@ RUN curl --proto '=https' --tlsv1.2 -sSf --output wasm-pack-init https://rustwas
     && chmod +x ./wasm-pack-init \
     && ./wasm-pack-init
 
+# Install wasm-opt version 117 via binaryen
+RUN curl -L https://github.com/WebAssembly/binaryen/releases/download/version_117/binaryen-version_117-x86_64-linux.tar.gz -o binaryen-version_117-x86_64-linux.tar.gz  \
+    && tar -xvf binaryen-version_117-x86_64-linux.tar.gz \
+    && mv binaryen-version_117 binaryen \
+    && mv binaryen/bin/* /usr/local/bin/ \
+    && rm -rf binaryen-version_117-x86_64-linux.tar.gz \
+    && rm -rf binaryen
+
 # :: Perform various cleanup tasks.
 RUN rm ./rustup ./wasm-pack-init \
-    rm -rf /var/lib/apt/lists/*
+    rm -rf /var/lib/apt/lists/*、
 
 RUN echo export PATH="$PATH" >> ~/.bashrc
 

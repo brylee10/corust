@@ -29,5 +29,18 @@ metrics = []
 # Gates any features which require target as `wasm32-unknown-unknown`
 js = []
 
+# This can be a separate profile after `wasm-pack` supports custom profiles:
+# https://github.com/rustwasm/wasm-pack/issues/1111
+# WASM optimizations for code size
+# https://rustwasm.github.io/book/reference/code-size.html#optimizing-builds-for-code-size
+# 
+# /pkg dir size
+# Dev - ~1.4MB
+# Release - 448MB 
 [profile.release]
-debug = true
+# opt-level = "s" # Optimize for size, not used in favor of performance
+lto = true 
+codegen-units = 1 # Reduce codegen units to improve optimization
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = ["-Os"] # Use wasm-opt with optimizations for size
