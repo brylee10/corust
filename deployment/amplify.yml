@@ -1,0 +1,13 @@
+---
+version: 1
+
+frontend:
+  phases:
+    build:
+      commands:
+        - make build
+
+  artifacts:
+    baseDirectory: webapp/dist
+    files:
+      - '**/*'

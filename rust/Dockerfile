@@ -3,6 +3,8 @@
 
 FROM ubuntu:20.04 as toolchain
 
+LABEL description="Corust containerized code execution environment."
+
 # Install packages in non-interactive mode
 ENV DEBIAN_FRONTEND="noninteractive"
 

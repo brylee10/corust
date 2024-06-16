@@ -9,23 +9,24 @@ rust/.env
 site/.env
 
 # dependencies
-node_modules
-.pnp
-.pnp.js
+site/node_modules
+site/.pnp
+site/.pnp.js
 
 # testing
-coverage
+site/coverage
 
 # production
-build
+site/build
+site/.npm
+
 
 # misc
 .DS_Store
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+site/.env.local
+site/.env.development.local
+site/.env.test.local
+site/.env.production.local
+site/npm-debug.log*
+site/yarn-debug.log*
+site/yarn-error.log*
