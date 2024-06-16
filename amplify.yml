@@ -8,6 +8,6 @@ frontend:
         - cd site && make deploy
 
   artifacts:
-    baseDirectory: site/dist
+    baseDirectory: site/build
     files:
       - '**/*'
