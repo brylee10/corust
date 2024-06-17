@@ -4,8 +4,8 @@ Description=Corust
 [Service]
 Type=simple
 Environment=RUST_LOG=info
-Environment=FRONT_END_URI=http://localhost:3000
-Environment=WS_SERVER_URI=127.0.0.1
+Environment=FRONT_END_URI=https://www.corust.dev
+Environment=WS_SERVER_URI=0.0.0.0
 Environment=PORT=8000
 
 ExecStart=/home/ec2-user/corust/rust/target/release/main
