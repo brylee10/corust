@@ -1,8 +1,9 @@
 # This Dockerfile was largely taken from the below, with modifications: 
 # https://github.com/aws-samples/aws-amplify-webassembly/blob/main/ci-build-image/Dockerfile
 #
-# To give credits to the original authors, the following license. The original authors are removed
-# to clarify any errors due to modifications are from the author of this repository. 
+# To give credits to the original authors, the following license is maintained. 
+# The original authors are removed to clarify any errors due to modifications are from the author 
+# of this repository. 
 
 #!
 # Copyright Amazon.com, Inc. or its affiliates. All Rights Reserved.

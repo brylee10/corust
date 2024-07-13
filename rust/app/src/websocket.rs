@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use corust_components::network::{UserId, UserList};
+use corust_components::server::ServerError;
 use corust_components::BroadcastLocalDocUpdate;
 use corust_sandbox::container::{ContainerError, ContainerMessage, ExecuteCommand};
 use futures_util::stream::{SplitSink, StreamExt};
@@ -25,7 +26,10 @@ use warp::{
 // Frequency to send pings to each client, in seconds
 const PING_INTERVAL_SEC: u64 = 10;
 // Users which have not responded to pings within this time will be marked as inactive
-const REMOVE_INACTIVE_USER_SEC: u64 = 30;
+const MARK_INACTIVE_USER_SEC: u64 = 15;
+// 30 minutes - This is the period a user claims the same username before being removed
+// Allows users who refresh their page to claim  the same identity
+const REMOVE_INACTIVE_USERS_SEC: u64 = 60 * 30;
 // Frequency to check for client inactivity, in seconds
 // Note that inactive user check for each connection will check all users for inactivity
 // If a connection did not end gracefully then the caller itself was unable to remove itself
@@ -75,7 +79,7 @@ pub(crate) async fn handle_websocket(
     // User Update 1: On join, broadcast new user list
     {
         let server = server.lock().await;
-        let user_list = UserList::new(server.users().values().cloned());
+        let user_list = UserList::new(server.active_users());
         let msg = ServerMessage::UserList(user_list);
 
         if let Err(e) = bcast_tx.send(msg) {
@@ -158,6 +162,7 @@ pub(crate) async fn handle_websocket(
                                     // Update the user's last activity time
                                     match server.users_mut().get_mut(&user_id) {
                                         Some(user) => {
+                                            user.activity.active = true;
                                             user.activity.last_activity = activity_time;
                                         }
                                         // This should never occur, the user_id is created on client join
@@ -166,16 +171,18 @@ pub(crate) async fn handle_websocket(
                                 } else if msg.is_close() {
                                     log::info!("Received graceful close message from client {user_id} in session ID {session_id}, removing user");
                                     let mut server = server.lock().await;
-                                    // Remove user from session on disconnect
-                                    match server.users_mut().remove(&user_id) {
-                                        Some(_) => {
+                                    // Mark user as inactive on disconnect
+                                    match server.mark_user_inactive(user_id) {
+                                        Ok(_) => {
                                             // Expected, user is present
                                         }
                                         // This should never occur, the user_id is created on client join
-                                        None => panic!("Received close user ID {user_id} which does not exist in session ID {session_id} user map"),
+                                        Err(ServerError::UserIdNotFound(user_id)) => panic!("Received close user ID {user_id} which does not exist in session ID {session_id} user map"),
+                                        // Unexpected error
+                                        Err(e) => panic!("Error marking user inactive on close: {e:?}"),
                                     }
                                     // User Update 2: On leave, broadcast user list
-                                    let user_list = UserList::new(server.users().values().cloned());
+                                    let user_list = UserList::new(server.active_users());
                                     let msg = ServerMessage::UserList(user_list);
 
                                     // Broadcast the message to other clients
@@ -242,7 +249,7 @@ pub(crate) async fn handle_websocket(
 
                     // User Update 3: Broadcast periodically in case non-gracefully disconnected users are pruned
                     let server = server.lock().await;
-                    let user_list = UserList::new(server.users().values().cloned());
+                    let user_list = UserList::new(server.active_users());
                     let msg = ServerMessage::UserList(user_list);
                     let msg = serde_json::ser::to_string(&msg).unwrap();
                     let msg: Message = Message::text(msg);
@@ -252,7 +259,7 @@ pub(crate) async fn handle_websocket(
                     }
                 },
                 _ = check_inactive_users.tick() => {
-                    match remove_inactive_users(&session_id, Arc::clone(&server), user_id, Arc::clone(&shared_ws_tx)).await {
+                    match mark_remove_inactive_users(&session_id, Arc::clone(&server), user_id, Arc::clone(&shared_ws_tx)).await {
                         RemoveUsersRet::RemoveSelf => {
                             // Exit from `select!` because current user is inactive
                             return;
@@ -330,7 +337,10 @@ enum RemoveUsersRet {
     Continue,
 }
 
-async fn remove_inactive_users(
+// Mark users as inactive if they have not responded to pings within a certain interval.
+// Inactive users will not be broadcast to other clients.
+// If a user is inactive for a long period, remove them permanently from the session.
+async fn mark_remove_inactive_users(
     session_id: &SessionId,
     server: SharedServer,
     user_id: UserId,
@@ -340,28 +350,47 @@ async fn remove_inactive_users(
     let mut server = server.lock().await;
 
     log::debug!(
-        "Users present in session ID {session_id}: {:?}",
+        "All users (inactive + active) present in session ID {session_id}: {:?}",
         server.users()
     );
 
+    let mut users_to_mark = Vec::new();
     let mut users_to_remove = Vec::new();
 
     for (id, user) in server.users() {
         let user_last_activity = user.activity.last_activity;
-        if user_last_activity.elapsed().as_secs() > REMOVE_INACTIVE_USER_SEC {
+        if user_last_activity.elapsed().as_secs() > MARK_INACTIVE_USER_SEC {
             log::debug!(
-                "User {user:?} in session ID {session_id} is inactive, marking for removal"
+                "User {user:?} in session ID {session_id} is inactive, marking as inactive"
             );
+            users_to_mark.push(*id);
+            if user.activity.active {
+                log::error!("User {user:?} has been inactive for {MARK_INACTIVE_USER_SEC} but is marked as active.");
+            }
+        } else {
+            if !user.activity.active {
+                log::error!("User {user:?} has been active but is marked as inactive.");
+            }
+        }
+        if user_last_activity.elapsed().as_secs() > REMOVE_INACTIVE_USERS_SEC {
+            log::debug!("User {user:?} in session ID {session_id} has been inactive for {REMOVE_INACTIVE_USERS_SEC}, removing");
             users_to_remove.push(*id);
         }
     }
 
+    for user_id in users_to_mark.iter() {
+        // unwrap: user_id is only added to vector if it exists in the user map
+        server.mark_user_inactive(*user_id).unwrap();
+    }
+
+    // Only users who are inactive for a long period are removed, freeing their username (their user ID is never reused though)
     for id in users_to_remove.iter() {
+        // unwrap: user_id is only added to vector if it exists in the user map
         let user = server.users_mut().remove(id).unwrap();
         log::debug!("Removing inactive user {user:?} from session ID {session_id}");
     }
 
-    if users_to_remove.contains(&user_id) {
+    if users_to_mark.contains(&user_id) {
         // tx close would initiate close handshake with client, but
         let mut ws_tx = ws_tx.lock().await;
         match ws_tx.close().await {
@@ -389,7 +418,7 @@ async fn send_snapshot(server: SharedServer, ws_tx: &mut SplitSink<WebSocket, Me
         state_id: server.current_state_id(),
     };
     // User Update 4: On join, send new user the UserList
-    let user_list = UserList::new(server.users().values().cloned());
+    let user_list = UserList::new(server.active_users());
 
     // TODO: Check if this is needed. Arbitrary order may work.
     // UserList is broadcast after the Snapshot such that all user cursor positions

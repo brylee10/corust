@@ -5,7 +5,7 @@ use corust_components::{
 use rand::Rng;
 use random_color::{color_dictionary::ColorDictionary, Color, Luminosity, RandomColor};
 use serde::{Deserialize, Serialize};
-use warp::{reject, Filter};
+use warp::{path, reject, Filter};
 
 use crate::sessions::SharedSessionMap;
 
@@ -163,6 +163,7 @@ fn random_color(existing_colors: Vec<&str>) -> String {
 async fn handle_user_join(
     session_map: SharedSessionMap,
     session_id: String,
+    user_id: Option<UserId>,
 ) -> Result<impl warp::Reply, warp::Rejection> {
     let mut session_map = session_map.lock().await;
     // The only location a session is created
@@ -170,6 +171,18 @@ async fn handle_user_join(
     let session = session.lock().await;
     let server = session.server();
     let mut server = server.lock().await;
+    log::debug!("User join request with ID: {:?}", user_id);
+    if let Some(user_id) = user_id {
+        // Will try to rejoin with the same user_id
+        // If not present, then will join with a new user_id
+        if let Some(user) = server.users_mut().get_mut(&user_id) {
+            user.activity.active = true;
+            user.activity.last_activity = std::time::Instant::now();
+            log::debug!("User rejoining with ID: {:?}", user_id);
+            return Ok(warp::reply::json(&UserJoinResponse { user_id }));
+        }
+    }
+
     let user_id = server.next_user_id();
 
     let mut rng = rand::thread_rng();
@@ -227,7 +240,13 @@ async fn handle_user_join(
 pub fn user_join_route(
     session_map: SharedSessionMap,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path("join")
-        .and(warp::path::param())
-        .and_then(move |session_id: String| handle_user_join(session_map.clone(), session_id))
+    let prefix = path!("join" / String / ..);
+    let opt = warp::path::param::<UserId>().map(Some).or_else(|_| async {
+        Ok::<(std::option::Option<UserId>,), std::convert::Infallible>((None,))
+    });
+    prefix
+        .and(opt)
+        .and_then(move |session_id: String, user_id: Option<UserId>| {
+            handle_user_join(session_map.clone(), session_id, user_id)
+        })
 }

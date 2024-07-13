@@ -69,7 +69,9 @@ pub struct Server {
     document_states: FnvHashMap<StateId, DocumentState>,
     // Current state_id
     current_state_id: StateId,
-    // All users that have connected to the server (active or inactive)
+    // All users that have connected to the server "recently" (active or inactive)
+    // where "recently" is defined as some threshold of time a user is inactive,
+    // after which the `User` name and color may be reused.
     users: FnvHashMap<UserId, User>,
     next_id: UserId,
 }
@@ -251,6 +253,22 @@ impl Server {
     pub fn users_mut(&mut self) -> &mut FnvHashMap<UserId, User> {
         &mut self.users
     }
+
+    pub fn mark_user_inactive(&mut self, user_id: UserId) -> Result<(), ServerError> {
+        match self.users.get_mut(&user_id) {
+            Some(user) => user.activity.active = false,
+            None => return Err(ServerError::UserIdNotFound(user_id)),
+        }
+        Ok(())
+    }
+
+    pub fn active_users(&self) -> Vec<User> {
+        self.users
+            .values()
+            .filter(|user| user.activity.active)
+            .cloned()
+            .collect()
+    }
 }
 
 #[derive(Debug, Error)]
@@ -265,6 +283,8 @@ pub enum ServerError {
     CursorTransformError(#[from] CursorTransformError),
     #[error("User ID already taken: {0}")]
     DuplicateUserId(UserId),
+    #[error("User ID not found: {0}")]
+    UserIdNotFound(UserId),
 }
 
 pub struct ServerNetwork {

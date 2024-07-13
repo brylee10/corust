@@ -20,7 +20,18 @@ function UserJoin() {
       // Will only throw an error if network error encountered
       try {
         console.debug("Sending fetch request");
-        const fetchUri = `${process.env.REACT_APP_ENDPOINT_URI}/join/${params.sessionId}`;
+        // Get the user id for the session, if it exists
+        const userId = sessionStorage.getItem(
+          "sessionUserId_" + params.sessionId
+        );
+        let fetchUri;
+        if (userId) {
+          console.debug("User id found in local storage: ", userId);
+          fetchUri = `${process.env.REACT_APP_ENDPOINT_URI}/join/${params.sessionId}/${userId}`;
+        } else {
+          fetchUri = `${process.env.REACT_APP_ENDPOINT_URI}/join/${params.sessionId}`;
+        }
+
         console.debug("fetchUri: ", fetchUri);
         const response = await fetch(fetchUri, {
           method: "POST",
@@ -41,6 +52,10 @@ function UserJoin() {
         // Initialize new client
         console.debug("Setting user id to: ", userJoinResponse.user_id);
         setUserId(userJoinResponse.user_id);
+        sessionStorage.setItem(
+          "sessionUserId_" + params.sessionId,
+          userJoinResponse.user_id.toString()
+        );
       } catch (error) {
         // TODO: user join failed, add retry or popup notification?
         console.error("Fetch error: ", error);

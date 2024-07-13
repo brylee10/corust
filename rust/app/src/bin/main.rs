@@ -12,7 +12,7 @@ use warp::Filter;
 
 use corust_app::sessions::SessionMap;
 use corust_app::users::user_join_route;
-use corust_app::{default_page, websocket::*};
+use corust_app::{root_page, websocket::*};
 use corust_sandbox::container::ContainerFactory;
 
 const MAX_CONCURRENT_CONTAINERS: usize = 100;
@@ -52,7 +52,7 @@ async fn main() {
     // warp::ws() is composed of many filters to handle HTTP -> websocket upgrade
     let websocket_route = websocket_route(Arc::clone(&session_map), Arc::clone(&container_factory));
     let user_join_route = user_join_route(Arc::clone(&session_map));
-    let default_page_route = default_page();
+    let root_page_route = root_page();
 
     let cors_origin = std::env::var("FRONT_END_URI")
         .unwrap_or_else(|e| panic!("FRONT_END_URI must be set, {}", e));
@@ -65,7 +65,7 @@ async fn main() {
 
     let routes = websocket_route
         .or(user_join_route)
-        .or(default_page_route)
+        .or(root_page_route)
         .with(cors);
 
     let addr = std::env::var("WS_SERVER_URI")
