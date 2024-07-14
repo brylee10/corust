@@ -30,6 +30,7 @@ use super::UserId;
 
 pub type CursorMap = FnvHashMap<UserId, CursorPos>;
 
+/// Cursor position indices are in characters and not bytes
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct CursorPos {
@@ -154,7 +155,7 @@ pub fn transform_cursor(
 
     debug_assert!(
         cursor_pos.anchor() == cursor_pos.from() || cursor_pos.anchor() == cursor_pos.to(),
-        "Cursor anchor is invalid, got anchor: {}, from: {}, to: {}",
+        "Cursor anchor should be either `from` or `to` but got anchor: {}, from: {}, to: {}",
         cursor_pos.anchor(),
         cursor_pos.from(),
         cursor_pos.to()
@@ -162,7 +163,7 @@ pub fn transform_cursor(
 
     debug_assert!(
         cursor_pos.head() == cursor_pos.from() || cursor_pos.head() == cursor_pos.to(),
-        "Cursor head is invalid, got head: {}, from: {}, to: {}",
+        "Cursor head should be either `from` or `to` but got head: {}, from: {}, to: {}",
         cursor_pos.head(),
         cursor_pos.from(),
         cursor_pos.to()
@@ -189,15 +190,15 @@ pub fn transform_cursor(
                     // Shifts entire range
                     // `<=` because transform assumes forward bias for the `from` index
                     // Insertion at the range start shifts range to the right but does not expand the range
-                    new_cursor_pos_from += text.len();
-                    new_cursor_pos_to += text.len();
+                    new_cursor_pos_from += text.chars().count();
+                    new_cursor_pos_to += text.chars().count();
                 } else if idx_old_str < cursor_pos.to() {
                     // Shifts only the end of the range
                     // `<` because transform assumes backwards bias for the end index
                     // Insertion at the end of the range does not shift the end of the range to the right so it
                     // does not expand the highlighted range
-                    new_cursor_pos_to += text.len();
-                    highlight_len += text.len();
+                    new_cursor_pos_to += text.chars().count();
+                    highlight_len += text.chars().count();
                 } else {
                     // Insertion after the range does not affect cursor index
                 }
@@ -395,10 +396,10 @@ mod tests {
         #[test]
         fn test_delete_at_cursor() {
             // A delete at the cursor should shift the cursor to the left
-            // In Doc: "aa|a"
-            let text = "aaa";
-            // Out Doc: "a|a"
-            let expected_transformed_text = "aa";
+            // In Doc: "ab|c"
+            let text = "abc";
+            // Out Doc: "a|c"
+            let expected_transformed_text = "ac";
 
             let starting_cursor_pos = CursorPos::new(2, 2, 2, 2);
             let expected_transformed_cursor_pos = CursorPos::new(1, 1, 1, 1);
@@ -407,6 +408,35 @@ mod tests {
                 CompoundOp::Retain { count: 1 },
                 CompoundOp::Delete { count: 1 },
                 CompoundOp::Retain { count: 1 },
+            ];
+
+            let text_op = TextOperation::from_ops(compound_ops.into_iter(), None, false);
+            let new_cursor_pos = transform_cursor(&text_op, &starting_cursor_pos).unwrap();
+            let transformed_text = text_op.apply(text).unwrap();
+            assert_eq!(transformed_text, expected_transformed_text);
+            assert_eq!(new_cursor_pos, expected_transformed_cursor_pos);
+        }
+
+        #[test]
+        fn test_insert_delete_at_cursor_multilingual() {
+            // Tests that the cursor transformation works with multilingual text
+            // in particular where a character is multiple bytes long
+            // A delete at the cursor should shift the cursor to the left
+            // In Doc: "你好吗。|"
+            let text = "你好吗。";
+            // Out Doc: "你好吗？"
+            let expected_transformed_text = "你好吗？";
+
+            let starting_cursor_pos = CursorPos::new(4, 4, 4, 4);
+            let expected_transformed_cursor_pos = CursorPos::new(4, 4, 4, 4);
+
+            let compound_ops = vec![
+                CompoundOp::Retain { count: 3 },
+                CompoundOp::Delete { count: 1 },
+                CompoundOp::Insert {
+                    // Deliberately uses the U+ff1f "？" instead of U+003f "?" to test multi-byte characters
+                    text: "？".to_string(),
+                },
             ];
 
             let text_op = TextOperation::from_ops(compound_ops.into_iter(), None, false);
@@ -599,6 +629,32 @@ mod tests {
                 },
             ];
 
+            let text_op = TextOperation::from_ops(compound_ops.into_iter(), None, false);
+            let new_cursor_pos = transform_cursor(&text_op, &starting_cursor_pos).unwrap();
+            let transformed_text = text_op.apply(text).unwrap();
+            assert_eq!(transformed_text, expected_transformed_text);
+            assert_eq!(new_cursor_pos, expected_transformed_cursor_pos);
+        }
+
+        #[test]
+        fn test_insert_multilingual() {
+            // Tests insert in a highlighted range with multilingual text where characters
+            // are more than one byte long
+            // In Doc: "|你！|"
+            let text = "你！";
+            // Out Doc: "|你好！|"
+            let expected_transformed_text = "你好！";
+
+            let starting_cursor_pos = CursorPos::new(0, 2, 0, 2);
+            let expected_transformed_cursor_pos = CursorPos::new(0, 3, 0, 3);
+
+            let compound_ops = vec![
+                CompoundOp::Retain { count: 1 },
+                CompoundOp::Insert {
+                    text: "好".to_string(),
+                },
+                CompoundOp::Retain { count: 1 },
+            ];
             let text_op = TextOperation::from_ops(compound_ops.into_iter(), None, false);
             let new_cursor_pos = transform_cursor(&text_op, &starting_cursor_pos).unwrap();
             let transformed_text = text_op.apply(text).unwrap();

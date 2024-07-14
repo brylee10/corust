@@ -2295,10 +2295,10 @@ mod test {
                 client_id,
                 document: target_text.to_string(),
                 cursor_pos: CursorPos::new(
-                    target_text.len(),
-                    target_text.len(),
-                    target_text.len(),
-                    target_text.len(),
+                    target_text.chars().count(),
+                    target_text.chars().count(),
+                    target_text.chars().count(),
+                    target_text.chars().count(),
                 ),
             };
             network.schedule_local_message(event, 0).unwrap();
@@ -2354,10 +2354,10 @@ mod test {
                 client_id: client1_id,
                 document: client1_edit.to_string(),
                 cursor_pos: CursorPos::new(
-                    client1_edit.len(),
-                    client1_edit.len(),
-                    client1_edit.len(),
-                    client1_edit.len(),
+                    client1_edit.chars().count(),
+                    client1_edit.chars().count(),
+                    client1_edit.chars().count(),
+                    client1_edit.chars().count(),
                 ),
             };
 
@@ -2365,10 +2365,10 @@ mod test {
                 client_id: client2_id,
                 document: client2_edit.to_string(),
                 cursor_pos: CursorPos::new(
-                    client2_edit.len(),
-                    client2_edit.len(),
-                    client2_edit.len(),
-                    client2_edit.len(),
+                    client2_edit.chars().count(),
+                    client2_edit.chars().count(),
+                    client2_edit.chars().count(),
+                    client2_edit.chars().count(),
                 ),
             };
             network.schedule_local_message(event1, 0).unwrap();
@@ -2505,10 +2505,10 @@ mod test {
                 client_id: client1_id,
                 document: client1_edit.to_string(),
                 cursor_pos: CursorPos::new(
-                    client1_edit.len(),
-                    client1_edit.len(),
-                    client1_edit.len(),
-                    client1_edit.len(),
+                    client1_edit.chars().count(),
+                    client1_edit.chars().count(),
+                    client1_edit.chars().count(),
+                    client1_edit.chars().count(),
                 ),
             };
 
@@ -2516,10 +2516,10 @@ mod test {
                 client_id: client2_id,
                 document: client2_edit.to_string(),
                 cursor_pos: CursorPos::new(
-                    client2_edit.len(),
-                    client2_edit.len(),
-                    client2_edit.len(),
-                    client2_edit.len(),
+                    client2_edit.chars().count(),
+                    client2_edit.chars().count(),
+                    client2_edit.chars().count(),
+                    client2_edit.chars().count(),
                 ),
             };
             network.schedule_local_message(event1, 0).unwrap();
@@ -2606,10 +2606,10 @@ mod test {
                 client_id: client1_id,
                 document: client1_edit1.to_string(),
                 cursor_pos: CursorPos::new(
-                    client1_edit1.len(),
-                    client1_edit1.len(),
-                    client1_edit1.len(),
-                    client1_edit1.len(),
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
                 ),
             };
 
@@ -2617,10 +2617,10 @@ mod test {
                 client_id: client2_id,
                 document: client2_edit.to_string(),
                 cursor_pos: CursorPos::new(
-                    client2_edit.len(),
-                    client2_edit.len(),
-                    client2_edit.len(),
-                    client2_edit.len(),
+                    client2_edit.chars().count(),
+                    client2_edit.chars().count(),
+                    client2_edit.chars().count(),
+                    client2_edit.chars().count(),
                 ),
             };
 
@@ -2628,10 +2628,10 @@ mod test {
                 client_id: client1_id,
                 document: client1_edit2.to_string(),
                 cursor_pos: CursorPos::new(
-                    client1_edit2.len(),
-                    client1_edit2.len(),
-                    client1_edit2.len(),
-                    client1_edit2.len(),
+                    client1_edit2.chars().count(),
+                    client1_edit2.chars().count(),
+                    client1_edit2.chars().count(),
+                    client1_edit2.chars().count(),
                 ),
             };
 
@@ -2639,10 +2639,10 @@ mod test {
                 client_id: client1_id,
                 document: client1_edit3.to_string(),
                 cursor_pos: CursorPos::new(
-                    client1_edit3.len(),
-                    client1_edit3.len(),
-                    client1_edit3.len(),
-                    client1_edit3.len(),
+                    client1_edit3.chars().count(),
+                    client1_edit3.chars().count(),
+                    client1_edit3.chars().count(),
+                    client1_edit3.chars().count(),
                 ),
             };
             network.schedule_local_message(event1, 0).unwrap();
@@ -2922,10 +2922,10 @@ mod test {
                 client_id: client1_id,
                 document: client1_edit1.to_string(),
                 cursor_pos: CursorPos::new(
-                    client1_edit1.len(),
-                    client1_edit1.len(),
-                    client1_edit1.len(),
-                    client1_edit1.len(),
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
                 ),
             };
 
@@ -2933,10 +2933,10 @@ mod test {
                 client_id: client1_id,
                 document: client1_edit2.to_string(),
                 cursor_pos: CursorPos::new(
-                    client1_edit2.len(),
-                    client1_edit2.len(),
-                    client1_edit2.len(),
-                    client1_edit2.len(),
+                    client1_edit2.chars().count(),
+                    client1_edit2.chars().count(),
+                    client1_edit2.chars().count(),
+                    client1_edit2.chars().count(),
                 ),
             };
 
@@ -2944,10 +2944,10 @@ mod test {
                 client_id: client1_id,
                 document: client1_edit3.to_string(),
                 cursor_pos: CursorPos::new(
-                    client1_edit3.len(),
-                    client1_edit3.len(),
-                    client1_edit3.len(),
-                    client1_edit3.len(),
+                    client1_edit3.chars().count(),
+                    client1_edit3.chars().count(),
+                    client1_edit3.chars().count(),
+                    client1_edit3.chars().count(),
                 ),
             };
 
@@ -2955,10 +2955,10 @@ mod test {
                 client_id: client2_id,
                 document: client2_edit1.to_string(),
                 cursor_pos: CursorPos::new(
-                    client2_edit1.len(),
-                    client2_edit1.len(),
-                    client2_edit1.len(),
-                    client2_edit1.len(),
+                    client2_edit1.chars().count(),
+                    client2_edit1.chars().count(),
+                    client2_edit1.chars().count(),
+                    client2_edit1.chars().count(),
                 ),
             };
 
@@ -2966,10 +2966,10 @@ mod test {
                 client_id: client2_id,
                 document: client2_edit2.to_string(),
                 cursor_pos: CursorPos::new(
-                    client2_edit2.len(),
-                    client2_edit2.len(),
-                    client2_edit2.len(),
-                    client2_edit2.len(),
+                    client2_edit2.chars().count(),
+                    client2_edit2.chars().count(),
+                    client2_edit2.chars().count(),
+                    client2_edit2.chars().count(),
                 ),
             };
 
@@ -3279,10 +3279,10 @@ mod test {
                 client_id: client1_id,
                 document: client1_edit1.to_string(),
                 cursor_pos: CursorPos::new(
-                    client1_edit1.len(),
-                    client1_edit1.len(),
-                    client1_edit1.len(),
-                    client1_edit1.len(),
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
                 ),
             };
 

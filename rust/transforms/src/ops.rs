@@ -83,7 +83,7 @@ impl CompoundOp {
     // Useful for calculating the output document size of a text operation.
     pub(crate) fn op_output_len(&self) -> isize {
         match self {
-            CompoundOp::Insert { text } => isize::try_from(text.len()).unwrap(),
+            CompoundOp::Insert { text } => isize::try_from(text.chars().count()).unwrap(),
             CompoundOp::Delete { .. } => 0,
             CompoundOp::Retain { count } => isize::try_from(*count).unwrap(),
         }

@@ -293,12 +293,16 @@ impl TextOperation {
                 // `op1` insertions "happens before" `op2` insertions
                 (Some(CompoundOp::Insert { text: s }), _) => {
                     ops1_prime.push(CompoundOp::Insert { text: s.clone() });
-                    ops2_prime.push(CompoundOp::Retain { count: s.len() });
+                    ops2_prime.push(CompoundOp::Retain {
+                        count: s.chars().count(),
+                    });
                     op1 = next_ops1.next();
                 }
                 (_, Some(CompoundOp::Insert { text: s })) => {
                     ops2_prime.push(CompoundOp::Insert { text: s.clone() });
-                    ops1_prime.push(CompoundOp::Retain { count: s.len() });
+                    ops1_prime.push(CompoundOp::Retain {
+                        count: s.chars().count(),
+                    });
                     op2 = next_ops2.next();
                 }
                 // Unreachable state
@@ -326,7 +330,7 @@ impl TextOperation {
     /// https://svn.apache.org/repos/asf/incubator/wave/whitepapers/operational-transform/operational-transform.html
     ///
     /// Given transformations `A`, `B`, document `d` and composition `C` where `C = A * B` (`A` applied before `B`), then
-    /// `C(d) = B(A(d))`.
+    /// `C(d) = B(A(d))`. Here `self` is A and `other` is B.
     pub fn compose(&self, other: &Self) -> Result<Self, TextOperationError> {
         if self.output_length != other.input_length {
             return Err(TextOperationError::CompositionIncompatible {
@@ -389,18 +393,25 @@ impl TextOperation {
                     next_a = a_ops.next();
                 }
                 (Some(CompoundOp::Insert { text: s }), Some(CompoundOp::Delete { count: b })) => {
-                    // Insert and delete equals no-op
-                    let min_count = std::cmp::min(s.len(), *b);
-                    match s.len().cmp(b) {
+                    // Delete over an insert equals no-op for overlapping section
+                    let num_chars = s.chars().count();
+                    let min_count = std::cmp::min(num_chars, *b);
+                    match num_chars.cmp(b) {
                         Ordering::Greater => {
+                            // Get the end index of the `min_count`th character
+                            let byte_index = s
+                                .char_indices()
+                                .nth(min_count)
+                                .map(|(i, _)| i)
+                                .unwrap_or(s.len());
                             next_a = Some(CompoundOp::Insert {
-                                text: s[min_count..].to_string(),
+                                text: s[byte_index..].to_string(),
                             });
                             next_b = b_ops.next();
                         }
                         Ordering::Less => {
                             next_b = Some(CompoundOp::Delete {
-                                count: *b - s.len(),
+                                count: *b - num_chars,
                             });
                             next_a = a_ops.next();
                         }
@@ -411,23 +422,30 @@ impl TextOperation {
                     };
                 }
                 (Some(CompoundOp::Insert { text: s }), Some(CompoundOp::Retain { count: b })) => {
-                    let min_count = std::cmp::min(s.len(), *b);
+                    let num_chars = s.chars().count();
+                    let min_count = std::cmp::min(num_chars, *b);
+                    // Get the end index of the `min_count`th character
+                    let byte_index = s
+                        .char_indices()
+                        .nth(min_count)
+                        .map(|i| i.0)
+                        .unwrap_or(s.len());
                     if min_count > 0 {
                         composed_ops.push(CompoundOp::Insert {
-                            text: s[..min_count].to_string(),
+                            text: s[..byte_index].to_string(),
                         });
                     }
 
-                    match s.len().cmp(b) {
+                    match num_chars.cmp(b) {
                         Ordering::Greater => {
                             next_a = Some(CompoundOp::Insert {
-                                text: s[min_count..].to_string(),
+                                text: s[byte_index..].to_string(),
                             });
                             next_b = b_ops.next();
                         }
                         Ordering::Less => {
                             next_b = Some(CompoundOp::Delete {
-                                count: *b - s.len(),
+                                count: *b - num_chars,
                             });
                             next_a = a_ops.next();
                         }
@@ -438,6 +456,14 @@ impl TextOperation {
                     };
                 }
                 (_, Some(CompoundOp::Insert { text: s })) => {
+                    // Since op A is applied first, op B is assumed to know the
+                    // text after op A. This means if both op B and op A insert
+                    // at the same position, the intent is op B to insert text
+                    // in front of op A's inserted text. So Op B inserts are
+                    // composed first.
+                    // e.g. Op A - Insert "World" at 0
+                    //      Op B - Insert "Hello " at 0
+                    // Composed is Insert "Hello World" at 0
                     composed_ops.push(CompoundOp::Insert {
                         text: s.to_string(),
                     });
@@ -549,7 +575,7 @@ impl TextUpdate {
     }
 }
 
-/// A text update range `[from, to]``.
+/// A text update range `[from, to]`. Indices are in characters, not bytes.
 #[wasm_bindgen]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextUpdateRange {
@@ -573,6 +599,7 @@ impl TextUpdateRange {
         self.to
     }
 
+    // Length is in characters, not bytes
     #[inline]
     pub fn len(&self) -> usize {
         self.to - self.from
@@ -634,10 +661,10 @@ pub fn text_operation_text_updates(text_op: &TextOperation) -> Vec<TextUpdate> {
             CompoundOp::Insert { text: s } => {
                 updates.push(TextUpdate::new(
                     TextUpdateRange::new(input_idx, input_idx),
-                    TextUpdateRange::new(output_idx, output_idx + s.len()),
+                    TextUpdateRange::new(output_idx, output_idx + s.chars().count()),
                     s.clone(),
                 ));
-                output_idx += s.len();
+                output_idx += s.chars().count();
             }
             CompoundOp::Delete { count: n } => {
                 updates.push(TextUpdate::new(
@@ -659,11 +686,12 @@ pub fn text_operation_text_updates(text_op: &TextOperation) -> Vec<TextUpdate> {
 }
 
 /// Helper to create a [`TextUpdate`] for the trivial case where an entire doc is
-/// inserted.
+/// inserted. The document length is counted in characters, not bytes. This matches
+/// how the front end interface handles text.
 pub fn text_update_from_doc(doc: &str) -> Vec<TextUpdate> {
     vec![TextUpdate::new(
         TextUpdateRange::new(0, 0),
-        TextUpdateRange::new(0, doc.len()),
+        TextUpdateRange::new(0, doc.chars().count()),
         doc.to_string(),
     )]
 }
@@ -857,6 +885,50 @@ mod test {
         }
 
         #[test]
+        fn test_transform_insert_multilingual() {
+            // Same as `test_transform_insert` but with multilingual text,
+            // particularly where one char is multiple bytes in UTF-8.
+            let original_text = "";
+            let ops1 = vec![CompoundOp::Insert {
+                text: "你好".to_string(),
+            }];
+            let ops2 = vec![CompoundOp::Insert {
+                text: " 世界".to_string(),
+            }];
+            let ops1 = TextOperation::from_ops(ops1.into_iter(), None, false);
+            let ops2 = TextOperation::from_ops(ops2.into_iter(), None, false);
+
+            let (op1_prime, op2_prime) = ops1.transform(&ops2).unwrap();
+            assert_eq!(
+                op2_prime
+                    .apply(&ops1.apply(original_text).unwrap())
+                    .unwrap(),
+                op1_prime
+                    .apply(&ops2.apply(original_text).unwrap())
+                    .unwrap()
+            );
+
+            assert_eq!(
+                op1_prime.ops,
+                vec![
+                    CompoundOp::Insert {
+                        text: "你好".to_string()
+                    },
+                    CompoundOp::Retain { count: 3 }
+                ]
+            );
+            assert_eq!(
+                op2_prime.ops,
+                vec![
+                    CompoundOp::Retain { count: 2 },
+                    CompoundOp::Insert {
+                        text: " 世界".to_string()
+                    }
+                ]
+            );
+        }
+
+        #[test]
         fn test_transform_delete_retain() {
             let original_text = "Good";
             let ops1 = vec![
@@ -1011,6 +1083,42 @@ mod test {
         }
 
         #[test]
+        fn test_multilingual_composition() {
+            // Tests the `TextOperation` struct can handle multilingual text, particularly
+            // where one char is multiple bytes in UTF-8.
+
+            // Op1 applied first, then op2
+            let ops1 = vec![
+                CompoundOp::Retain { count: 2 },
+                CompoundOp::Insert {
+                    text: " 世界".to_string(),
+                },
+            ];
+            let ops2 = vec![
+                CompoundOp::Retain { count: 2 },
+                CompoundOp::Delete { count: 2 },
+                CompoundOp::Insert {
+                    text: ", 世".to_string(),
+                },
+                CompoundOp::Retain { count: 1 },
+                CompoundOp::Insert {
+                    text: "!".to_string(),
+                },
+            ];
+            let input_text = "你好";
+            let target_text = "你好, 世界!";
+
+            let ops1 = TextOperation::from_ops(ops1.into_iter(), None, false);
+            let ops2 = TextOperation::from_ops(ops2.into_iter(), None, false);
+            let output_text = ops2.apply(&ops1.apply(input_text).unwrap()).unwrap();
+            assert_eq!(output_text, target_text);
+
+            let composed_op = ops1.compose(&ops2).unwrap();
+            let output_text = composed_op.apply(input_text).unwrap();
+            assert_eq!(output_text, target_text);
+        }
+
+        #[test]
         fn test_composition_incompatible() {
             let ops1 = vec![CompoundOp::Retain { count: 5 }];
             let ops2 = vec![CompoundOp::Retain { count: 6 }];
@@ -1059,9 +1167,9 @@ mod test {
         fn test_text_update_all_retain() {
             let updates = vec![];
             let start_doc = "Hello";
-            let text_op = text_updates_to_text_operation(&updates, start_doc.len());
+            let text_op = text_updates_to_text_operation(&updates, start_doc.chars().count());
             let expected_ops = vec![CompoundOp::Retain {
-                count: start_doc.len(),
+                count: start_doc.chars().count(),
             }];
             assert_eq!(text_op.ops, expected_ops);
             // Test `TextOperation` -> `TextUpdate` reverse operation
@@ -1084,10 +1192,43 @@ mod test {
             ];
             let start_doc = "ello";
             let target_doc = "Hllo";
-            let text_op = text_updates_to_text_operation(&updates, target_doc.len());
+            let text_op = text_updates_to_text_operation(&updates, target_doc.chars().count());
             let expected_ops = vec![
                 CompoundOp::Insert {
                     text: "H".to_string(),
+                },
+                CompoundOp::Delete { count: 1 },
+                CompoundOp::Retain { count: 3 },
+            ];
+            assert_eq!(text_op.ops, expected_ops);
+            assert_eq!(text_op.apply(start_doc).unwrap(), target_doc);
+            // Test `TextOperation` -> `TextUpdate` reverse operation
+            assert_eq!(text_operation_text_updates(&text_op), updates);
+        }
+
+        #[test]
+        fn test_text_insert_delete_multilingual() {
+            // Tests the `TextOperation` struct can handle multilingual text, particularly
+            // where one char is multiple bytes in UTF-8.
+            let updates = vec![
+                TextUpdate::new(
+                    TextUpdateRange::new(0, 0),
+                    TextUpdateRange::new(0, 1),
+                    "你".to_string(),
+                ),
+                TextUpdate::new(
+                    TextUpdateRange::new(0, 1),
+                    TextUpdateRange::new(1, 1),
+                    "".to_string(),
+                ),
+            ];
+            // Deliberately uses the character U+ff1f（？）instead of U+003f (?) to test multibyte characters
+            let start_doc = "X好吗？";
+            let target_doc = "你好吗？";
+            let text_op = text_updates_to_text_operation(&updates, target_doc.chars().count());
+            let expected_ops = vec![
+                CompoundOp::Insert {
+                    text: "你".to_string(),
                 },
                 CompoundOp::Delete { count: 1 },
                 CompoundOp::Retain { count: 3 },
@@ -1109,7 +1250,7 @@ mod test {
             )];
             let start_doc = "hi";
             let target_doc = "Hi";
-            let text_op = text_updates_to_text_operation(&updates, target_doc.len());
+            let text_op = text_updates_to_text_operation(&updates, target_doc.chars().count());
             let expected_ops = vec![
                 CompoundOp::Insert {
                     text: "H".to_string(),
@@ -1157,7 +1298,7 @@ mod test {
                 },
                 CompoundOp::Retain { count: 1 },
             ];
-            let text_op = text_updates_to_text_operation(&updates, target_text.len());
+            let text_op = text_updates_to_text_operation(&updates, target_text.chars().count());
             assert_eq!(text_op.ops, expected_ops);
             assert_eq!(text_op.apply(start_text).unwrap(), target_text);
             // `TextOperation` -> `TextUpdate` reverse operation not tested because this test uses replace operations
@@ -1248,7 +1389,21 @@ mod test {
             let updates = text_update_from_doc(doc);
             let expected_updates = vec![TextUpdate::new(
                 TextUpdateRange::new(0, 0),
-                TextUpdateRange::new(0, doc.len()),
+                TextUpdateRange::new(0, doc.chars().count()),
+                doc.to_string(),
+            )];
+            assert_eq!(updates, expected_updates);
+        }
+
+        #[test]
+        fn test_doc_to_text_update_multilingual() {
+            // Tests the `TextOperation` struct can handle multilingual text, particularly
+            // where one char is multiple bytes in UTF-8.
+            let doc = "你好世界！";
+            let updates = text_update_from_doc(doc);
+            let expected_updates = vec![TextUpdate::new(
+                TextUpdateRange::new(0, 0),
+                TextUpdateRange::new(0, doc.chars().count()),
                 doc.to_string(),
             )];
             assert_eq!(updates, expected_updates);
