@@ -11,6 +11,7 @@ crate-type = ["cdylib", "lib"]
 [dependencies]
 # Not a direct dependency, but listed to enable the "js" feature to toggle `wasm32-unknown-unknown` support
 getrandom               = { version = "0.2", features = ["js"] }
+log                     = "0.4"
 serde                   = { version = "1.0", features = ["derive"] } 
 serde_json              = "1.0"
 thiserror               = "1"

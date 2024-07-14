@@ -29,7 +29,7 @@ extern "C" {
 /// Error type for text operation errors
 #[derive(Error, Debug)]
 pub enum TextOperationError {
-    #[error("Input length is incorrect. Expect {expected}, got {actual}")]
+    #[error("Input length is incorrect. Expect {expected} chars, got {actual} chars")]
     IncorrectInputLength { expected: usize, actual: usize },
     #[error(
         "Composition is incompatible. Expected input size {expected_input}, got {actual_input}"
@@ -48,8 +48,12 @@ pub struct TextOperation {
     // Applied in order, first to last
     ops: Vec<CompoundOp>,
     // The length of the document before the operation was applied
+    // The length is the number of characters in the document, not the number
+    // of UTF-8 bytes.
     input_length: usize,
     // The length of the document after the operation was applied
+    // The length is the number of characters in the document, not the number
+    // of UTF-8 bytes.
     output_length: usize,
     // Randomly generated id uniquely identifying this operation
     id: Uuid,
@@ -459,10 +463,11 @@ impl TextOperation {
     ///
     /// Function can be expressed as `apply(input, ops) -> output` where `input` is the input text, `ops` is the list of operations
     pub fn apply(&self, input_text: &str) -> Result<String, TextOperationError> {
-        if input_text.len() != self.input_length {
+        if input_text.chars().count() != self.input_length {
+            log::debug!("Input text: {}", input_text);
             return Err(TextOperationError::IncorrectInputLength {
                 expected: self.input_length,
-                actual: input_text.len(),
+                actual: input_text.chars().count(),
             });
         }
 
@@ -748,6 +753,23 @@ mod test {
             let text_op = TextOperation::from_ops(ops.into_iter(), None, false);
             let output_text = text_op.apply(input_text).unwrap();
             assert_eq!(output_text, "helworld");
+        }
+
+        #[test]
+        fn test_text_operation_apply_multilingual() {
+            // Tests the `TextOperation` struct can handle multilingual text, particularly
+            // where one char is multiple bytes in UTF-8.
+            let ops = vec![
+                CompoundOp::Retain { count: 5 },
+                CompoundOp::Delete { count: 6 },
+                CompoundOp::Insert {
+                    text: ", 你好🌍".to_string(),
+                },
+            ];
+            let input_text = "hello world";
+            let text_op = TextOperation::from_ops(ops.into_iter(), None, false);
+            let output_text = text_op.apply(input_text).unwrap();
+            assert_eq!(output_text, "hello, 你好🌍");
         }
 
         #[test]
