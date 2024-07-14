@@ -544,6 +544,15 @@ mod test {
     // C1, Cn   - client 1, client n
     // ...      - After some time, the listed operations will occur
     // "s|tr |" - `|` represents the begin and end of a cursor highlight
+
+    // Test naming terminology:
+    // - single/multi client: Number of clients connected to server (multi client tests collaboration)
+    // - sequential: no client messages are bufferred, clients may have at most 1 outstanding operation that is not acked by the server
+    // - buffered: If a client sends multiple operations before receiving an ack from the server, messages are buffered
+    //             tests logic that the buffer is transformed by the server operations
+    // - multiops: tests insert, delete, and retain operations
+    // - multilingual: text is in a language where each character is multiple bytes
+    //  (tests tracking is in units of characters, not bytes, or even grapheme characters)
     mod cursor_tests {
         // Tests designed primarily for cursor tracking.
         // These will still test text transformations as a side effect, but these explicitly assert cursor positions.
@@ -1316,6 +1325,429 @@ mod test {
             // Cursor: "|world|"
             let client2_edit2 = "world";
             let client2_cursor_edit2_pos = CursorPos::new(5, 5, 5, 5);
+
+            // Server
+            let server_state1 = client1_edit1;
+            let server_state2 = client2_edit1;
+            let server_state3 = client2_edit1;
+            let server_state4 = client2_edit2;
+
+            let client1_event1 = LocalMessage {
+                client_id: client1_id,
+                document: client1_edit1.to_string(),
+                cursor_pos: client1_cursor_edit1_pos,
+            };
+
+            let client1_event2 = LocalMessage {
+                client_id: client1_id,
+                document: client1_edit2.to_string(),
+                cursor_pos: client1_cursor_edit2_pos,
+            };
+
+            let client2_event1 = LocalMessage {
+                client_id: client2_id,
+                document: client2_edit1.to_string(),
+                cursor_pos: client2_cursor_edit1_pos,
+            };
+
+            let client2_event2 = LocalMessage {
+                client_id: client2_id,
+                document: client2_edit2.to_string(),
+                cursor_pos: client2_cursor_edit2_pos,
+            };
+
+            network.schedule_local_message(client1_event1, 1).unwrap();
+            network.schedule_local_message(client1_event2, 5).unwrap();
+            network.schedule_local_message(client2_event1, 4).unwrap();
+            network.schedule_local_message(client2_event2, 8).unwrap();
+
+            // T = 0 - Snapshot
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 0);
+
+            // T = 1
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 1);
+            assert_eq!(network.component(server_id).unwrap().document(), start_text);
+            assert_eq!(
+                network.component(client1_id).unwrap().document(),
+                client1_edit1
+            );
+            assert_eq!(
+                network
+                    .component(client1_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                Some(client1_cursor_edit1_pos)
+            );
+            assert_eq!(
+                network.component(client2_id).unwrap().document(),
+                start_text
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client2_id),
+                None,
+            );
+
+            // T = 2
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 2);
+            assert_eq!(
+                network.component(server_id).unwrap().document(),
+                client1_edit1
+            );
+            assert_eq!(
+                network
+                    .component(client1_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                Some(client1_cursor_edit1_pos)
+            );
+            assert_eq!(
+                network.component(client1_id).unwrap().document(),
+                client1_edit1
+            );
+            assert_eq!(
+                network
+                    .component(client1_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                Some(client1_cursor_edit1_pos)
+            );
+            assert_eq!(
+                network.component(client2_id).unwrap().document(),
+                start_text
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client2_id),
+                None,
+            );
+
+            // T = 3
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 3);
+            assert_eq!(
+                network.component(server_id).unwrap().document(),
+                server_state1
+            );
+            assert_eq!(
+                network
+                    .component(client1_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                Some(client1_cursor_edit1_pos)
+            );
+            assert_eq!(
+                network.component(client1_id).unwrap().document(),
+                client1_edit1
+            );
+            assert_eq!(
+                network
+                    .component(client1_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                Some(client1_cursor_edit1_pos)
+            );
+            assert_eq!(
+                network.component(client2_id).unwrap().document(),
+                client2_server_sync1
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                Some(client1_cursor_edit1_pos)
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client2_id),
+                client2_cursor_sync1_pos,
+            );
+
+            // T = 4
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 4);
+            assert_eq!(
+                network.component(client2_id).unwrap().document(),
+                client2_edit1
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                Some(client2_edit1_c1_cursor_pos)
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client2_id),
+                Some(client2_cursor_edit1_pos),
+            );
+
+            // T = 5
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 5);
+            assert_eq!(
+                network.component(server_id).unwrap().document(),
+                server_state2
+            );
+            assert_eq!(
+                network.component(server_id).unwrap().cursor_pos(client2_id),
+                // It happens that client1 and 2 after this op will bot be at the send of string
+                Some(client2_cursor_edit1_pos)
+            );
+            assert_eq!(
+                network.component(server_id).unwrap().cursor_pos(client1_id),
+                // It happens that client1 and 2 after this op will bot be at the send of string
+                Some(client2_cursor_edit1_pos)
+            );
+            assert_eq!(
+                network.component(client1_id).unwrap().document(),
+                client1_edit2
+            );
+            assert_eq!(
+                network
+                    .component(client1_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                Some(client1_cursor_edit2_pos)
+            );
+            assert_eq!(
+                network.component(client2_id).unwrap().document(),
+                client2_edit1
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                // It happens that client1 and 2 after this op will bot be at the send of string
+                Some(client2_cursor_edit1_pos)
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client2_id),
+                Some(client2_cursor_edit1_pos),
+            );
+
+            // T = 6
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 6);
+            assert_eq!(
+                network.component(server_id).unwrap().document(),
+                server_state3
+            );
+            assert_eq!(
+                network.component(server_id).unwrap().cursor_pos(client1_id),
+                Some(client1_cursor_sync1_pos)
+            );
+            assert_eq!(
+                network.component(server_id).unwrap().cursor_pos(client2_id),
+                Some(client2_cursor_edit1_pos)
+            );
+            assert_eq!(
+                network.component(client1_id).unwrap().document(),
+                client1_server_sync1
+            );
+            assert_eq!(
+                network
+                    .component(client1_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                Some(client1_cursor_sync1_pos)
+            );
+            assert_eq!(
+                network
+                    .component(client1_id)
+                    .unwrap()
+                    .cursor_pos(client2_id),
+                Some(client2_cursor_sync2_pos)
+            );
+            assert_eq!(
+                network.component(client2_id).unwrap().document(),
+                client2_edit1
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                // It happens that client1 and 2 after this op will bot be at the send of string
+                Some(client2_cursor_edit1_pos)
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client2_id),
+                Some(client2_cursor_edit1_pos),
+            );
+
+            // T = 7
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 7);
+            assert_eq!(
+                network.component(client2_id).unwrap().document(),
+                client2_server_sync2
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                // It happens that client1 and 2 after this op will bot be at the send of string
+                Some(client1_cursor_sync1_pos)
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client2_id),
+                Some(client2_cursor_sync2_pos),
+            );
+
+            // T = 8, only asserts state for changing components
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 8);
+            assert_eq!(
+                network.component(client2_id).unwrap().document(),
+                client2_edit2
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                Some(client1_cursor_sync2_pos)
+            );
+            assert_eq!(
+                network
+                    .component(client2_id)
+                    .unwrap()
+                    .cursor_pos(client2_id),
+                Some(client2_cursor_edit2_pos),
+            );
+
+            // T = 9, only asserts state for changing components
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 9);
+            assert_eq!(
+                network.component(server_id).unwrap().document(),
+                server_state4
+            );
+            assert_eq!(
+                network.component(server_id).unwrap().cursor_pos(client1_id),
+                Some(client1_cursor_sync2_pos)
+            );
+            assert_eq!(
+                network.component(server_id).unwrap().cursor_pos(client2_id),
+                Some(client2_cursor_edit2_pos),
+            );
+
+            // T = 10, only asserts state for changing components
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 10);
+            assert_eq!(
+                network.component(client1_id).unwrap().document(),
+                client1_server_sync2
+            );
+            assert_eq!(
+                network
+                    .component(client1_id)
+                    .unwrap()
+                    .cursor_pos(client1_id),
+                Some(client1_cursor_sync2_pos)
+            );
+            assert_eq!(
+                network
+                    .component(client1_id)
+                    .unwrap()
+                    .cursor_pos(client2_id),
+                Some(client2_cursor_edit2_pos),
+            );
+
+            assert!(network.tick().unwrap() == NetworkState::Stopped);
+        }
+
+        #[test]
+        fn test_multi_client_cursor_highlight_multiop_sequential_multilingual() {
+            // Tests similar to `test_multi_client_cursor_highlight_multiop_sequential` but with a language
+            // where each character is multiple bytes.
+            // Time | C1                      | C2                          | Server
+            //------|-------------------------|-----------------------------|------------------------
+            // 0    | Snap - ""               | Snap - ""                   |
+            // 1    | L1/O (S0) - "你好|"      |                             |
+            // 2    |                         |                             | C1/S1 -> "你好|"
+            // 3    | Ack(L1)                 | S1 - "你好|"                 |
+            // 4    |                         | L1/O (S1) - "你好世界||"      |
+            // 5    | L2/O (S1) - "|你好|"     |                             | C2/S2 -> "你好世界||"
+            // 6    | S2 - "｜你好|世界|"      | Ack(L1)                     | C1/S3 -> "｜你好|世界|" <- interesting C1, rebroadcasts range
+            // 7    | Ack(L2)                 | S2 - "｜你好|世界|"          |
+            // 8    |                         | L2/O (S2) - "|世界|"         |
+            // 9    |                         |                             | C2/S4 -> "|世界|"
+            // 10   | S3 - "|世界|"            | Ack(L2)                     |
+
+            let mut network = Network::new();
+            let server = Box::new(ServerNetwork::new(&mut network));
+            let client1 = Box::new(ClientNetwork::new(&mut network));
+            let client2 = Box::new(ClientNetwork::new(&mut network));
+
+            let client1_id = client1.id();
+            let client2_id = client2.id();
+            let server_id = server.id();
+
+            network
+                .add_component_sod(server, Delay::constant(1))
+                .unwrap();
+            network
+                .add_component_sod(client1, Delay::constant(1))
+                .unwrap();
+            network
+                .add_component_sod(client2, Delay::constant(1))
+                .unwrap();
+
+            let start_text = "";
+
+            // Client 1
+            // Cursor: "你好|"
+            let client1_edit1 = "你好";
+            let client1_cursor_edit1_pos = CursorPos::new(2, 2, 2, 2);
+            // Cursor: "|你好|"
+            let client1_edit2 = "你好";
+            let client1_cursor_edit2_pos = CursorPos::new(0, 2, 0, 2);
+            // Cursor: "|你好|世界|"
+            let client1_server_sync1 = "你好世界";
+            let client1_cursor_sync1_pos = CursorPos::new(0, 2, 0, 2);
+            // Cursor: "|世界|"
+            let client1_server_sync2 = "世界";
+            let client1_cursor_sync2_pos = CursorPos::new(0, 0, 0, 0);
+
+            // Client 2
+            let client2_server_sync1 = "你好";
+            // Client has not typed in document, so cursor is not present yet
+            let client2_cursor_sync1_pos = None;
+            // Cursor: "你好世界||"
+            let client2_edit1 = "你好世界";
+            let client2_cursor_edit1_pos = CursorPos::new(4, 4, 4, 4);
+            let client2_edit1_c1_cursor_pos = CursorPos::new(4, 4, 4, 4);
+            let client2_server_sync2 = "你好世界";
+            let client2_cursor_sync2_pos = client2_cursor_edit1_pos;
+            // Cursor: "|世界|"
+            let client2_edit2 = "世界";
+            let client2_cursor_edit2_pos = CursorPos::new(2, 2, 2, 2);
 
             // Server
             let server_state1 = client1_edit1;
