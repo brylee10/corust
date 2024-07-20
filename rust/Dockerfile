@@ -46,7 +46,7 @@ FROM toolchain
 # Copy the `Cargo.toml` and build the Rust project in which user code will be run
 WORKDIR /corust
 RUN cargo init /corust
-COPY --chown=corust Cargo.toml.sandbox /corust/Cargo.toml
+COPY --chown=corust sandbox/Cargo.toml.sandbox /corust/Cargo.toml
 RUN cargo build --release
 RUN rm src/*.rs
 

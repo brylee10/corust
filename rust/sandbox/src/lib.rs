@@ -1,3 +1,5 @@
+#![deny(dead_code)]
+
 use ansi_term::Color;
 use env_logger::Target;
 use log::Level;

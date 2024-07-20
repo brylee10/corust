@@ -1,9 +1,0 @@
-[package]
-name = "corust"
-version = "0.1.0"
-edition = "2021"
-authors = ["Corust"]
-description = "Sandbox for Corust"
-
-[dependencies]
-time = "0.3.36"

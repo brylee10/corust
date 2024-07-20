@@ -1,3 +1,6 @@
+# This Dockerfile is used as a custom build image for AWS Amplify, particularly to compile 
+# Rust code to WebAssembly.
+# 
 # This Dockerfile was largely taken from the below, with modifications: 
 # https://github.com/aws-samples/aws-amplify-webassembly/blob/main/ci-build-image/Dockerfile
 #
