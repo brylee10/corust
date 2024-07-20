@@ -1,3 +1,5 @@
+#![deny(dead_code)]
+
 use warp::Filter;
 
 pub mod execute;

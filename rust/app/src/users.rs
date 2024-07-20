@@ -63,7 +63,7 @@ const NAMES: [&str; 50] = [
 ];
 
 // When [`NAMES`] is exhausted, generate user names `Rustacean {edition}` starting from this rust edition.
-// There should almost always be enough names in [`NAMES`] to avoid this fallback.
+// For practical purposes, there should almost always be enough names in [`NAMES`] to avoid this fallback.
 const RUST_FIRST_EDITION: usize = 2015;
 
 // Possible color hues to sample from (does not allow monochrome or yellow)
@@ -84,11 +84,6 @@ struct DuplicateUserError {
 }
 
 impl reject::Reject for DuplicateUserError {}
-
-#[derive(Debug)]
-struct MaxUsersError;
-
-impl reject::Reject for MaxUsersError {}
 
 #[derive(Debug)]
 struct UnexpectedError;
