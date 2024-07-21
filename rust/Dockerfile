@@ -1,7 +1,7 @@
 # Based on Rust Playground Dockerfile
 # https://github.com/rust-lang/rust-playground/blob/main/compiler/base/Dockerfile
 
-FROM ubuntu:20.04 as toolchain
+FROM ubuntu:24.04 as toolchain
 
 LABEL description="Corust containerized code execution environment."
 
@@ -9,10 +9,13 @@ LABEL description="Corust containerized code execution environment."
 ENV DEBIAN_FRONTEND="noninteractive"
 
 # Some Rust packages require a python3 interpreter
+# OpenSSL requires `libssl-dev` and `pkg-config`
 RUN apt-get update && apt-get install -y \
     build-essential \
     curl \
-    python3
+    python3 \
+    pkg-config \
+    libssl-dev
 
 # Create new user and disable root password
 RUN useradd -m corust -d /corust

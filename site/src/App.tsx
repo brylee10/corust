@@ -34,7 +34,6 @@ import {
   Client,
 } from "corust-components/corust_components.js";
 import { useParams } from "react-router-dom";
-import UserIconList from "./components/userIconList.tsx";
 import { Alert, Button, Snackbar, styled, Grow, Tooltip } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import {
@@ -45,21 +44,23 @@ import {
   updateRunStatus,
   ServerRunStatus,
 } from "./components/runOutputDisplay.tsx";
+import HeaderBar from "./components/headerBar/headerBar.tsx";
 
 // Define constants once
 const CustomButton = styled(Button)({
   padding: "10px 20px",
   // Rust!
-  backgroundColor: "#CE422B",
+  backgroundColor: "#CE412B",
   color: "white",
   border: "none",
   borderRadius: "5px",
   cursor: "pointer",
-  alignSelf: "flex-start",
   fontWeight: "bold",
   lineHeight: "1.25",
+  height: 38,
+  alignSelf: "center",
   "&:hover": {
-    backgroundColor: "#CE422B",
+    backgroundColor: "#CE412B",
   },
 });
 
@@ -71,9 +72,9 @@ const DisabledButton = styled(Button)({
   // Do not show a cursor helper
   cursor: "default",
   borderRadius: "5px",
-  alignSelf: "flex-start",
   fontWeight: "bold",
   lineHeight: "1.25",
+  alignSelf: "center",
   "&:hover": {
     backgroundColor: "gray",
   },
@@ -890,10 +891,11 @@ function App({ userId }: AppProps) {
 
   return (
     <div className="App">
-      <div className="header-bar">
-        <div>{renderRunButton()}</div>
-        <UserIconList userArr={userArr} selfUserId={client.user_id()} />
-      </div>
+      <HeaderBar
+        renderRunButton={renderRunButton}
+        userArr={userArr}
+        selfUserId={client.user_id()}
+      />
       <CodeMirror
         className="editor"
         height="100%"

@@ -62,6 +62,8 @@ struct Crate {
     name: String,
     version: String,
     features: BTreeSet<InternedString>,
+    // `default_features` is deprecated in the 2024 edition
+    #[serde(rename = "default-features")]
     default_features: bool,
     #[serde(skip)]
     package_id: PackageId,

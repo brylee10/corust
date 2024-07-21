@@ -1,4 +1,4 @@
-import { UserInner } from "../../../rust/components/pkg/corust_components";
+import { UserInner } from "../../../../rust/components/pkg/corust_components";
 import { useEffect, useState } from "react";
 import UserIcon from "./userIcon";
 
