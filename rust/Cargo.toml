@@ -1,8 +1,10 @@
 [workspace]
+resolver = "2"
 
 members = [
-    "transforms",
     "app",
     "components", 
-    "sandbox",
+    "populate_crates",
+    "sandbox", 
+    "transforms",    
 ]

@@ -1,0 +1,1006 @@
+[dependencies.aes]
+default_features = true
+features = []
+version = "0.8.4"
+
+[dependencies.ahash]
+default_features = true
+features = []
+version = "0.8.11"
+
+[dependencies.anyhow]
+default_features = true
+features = []
+version = "1.0.86"
+
+[dependencies.arrayvec]
+default_features = true
+features = []
+version = "0.7.4"
+
+[dependencies.async-channel]
+default_features = true
+features = []
+version = "2.3.1"
+
+[dependencies.async-stream]
+default_features = true
+features = []
+version = "0.3.5"
+
+[dependencies.async-trait]
+default_features = true
+features = []
+version = "0.1.81"
+
+[dependencies.axum]
+default_features = true
+features = ["http1", "http2", "json", "multipart", "ws"]
+version = "0.7.5"
+
+[dependencies.backtrace]
+default_features = true
+features = []
+version = "0.3.73"
+
+[dependencies.base64]
+default_features = true
+features = []
+version = "0.22.1"
+
+[dependencies.bincode]
+default_features = true
+features = []
+version = "1.3.3"
+
+[dependencies.bindgen]
+default_features = true
+features = []
+version = "0.69.4"
+
+[dependencies.bitflags]
+default_features = true
+features = []
+version = "2.6.0"
+
+[dependencies.bitvec]
+default_features = true
+features = []
+version = "1.0.1"
+
+[dependencies.bytemuck]
+default_features = true
+features = ["const_zeroed", "derive", "extern_crate_alloc", "extern_crate_std", "min_const_generics", "must_cast", "wasm_simd", "zeroable_atomics", "zeroable_maybe_uninit"]
+version = "1.16.1"
+
+[dependencies.byteorder]
+default_features = true
+features = []
+version = "1.5.0"
+
+[dependencies.bytes]
+default_features = true
+features = []
+version = "1.6.1"
+
+[dependencies.cargo_metadata]
+default_features = true
+features = []
+version = "0.18.1"
+
+[dependencies.cc]
+default_features = true
+features = []
+version = "1.1.6"
+
+[dependencies.cfg-if]
+default_features = true
+features = []
+version = "1.0.0"
+
+[dependencies.chrono]
+default_features = true
+features = ["serde"]
+version = "0.4.38"
+
+[dependencies.clap]
+default_features = true
+features = ["unstable-doc"]
+version = "4.5.9"
+
+[dependencies.colored]
+default_features = true
+features = []
+version = "2.1.0"
+
+[dependencies.console]
+default_features = true
+features = []
+version = "0.15.8"
+
+[dependencies.convert_case]
+default_features = true
+features = []
+version = "0.6.0"
+
+[dependencies.crc32fast]
+default_features = true
+features = []
+version = "1.4.2"
+
+[dependencies.criterion]
+default_features = true
+features = []
+version = "0.5.1"
+
+[dependencies.crossbeam-channel]
+default_features = true
+features = []
+version = "0.5.13"
+
+[dependencies.crossbeam-utils]
+default_features = true
+features = []
+version = "0.8.20"
+
+[dependencies.crossterm]
+default_features = true
+features = []
+version = "0.27.0"
+
+[dependencies.csv]
+default_features = true
+features = []
+version = "1.3.0"
+
+[dependencies.darling]
+default_features = true
+features = []
+version = "0.20.10"
+
+[dependencies.dashmap]
+default_features = true
+features = []
+version = "6.0.1"
+
+[dependencies.data-encoding]
+default_features = true
+features = []
+version = "2.6.0"
+
+[dependencies.derivative]
+default_features = true
+features = []
+version = "2.2.0"
+
+[dependencies.derive_more]
+default_features = true
+features = []
+version = "0.99.18"
+
+[dependencies.digest]
+default_features = true
+features = []
+version = "0.10.7"
+
+[dependencies.dirs]
+default_features = true
+features = []
+version = "5.0.1"
+
+[dependencies.either]
+default_features = true
+features = ["serde"]
+version = "1.13.0"
+
+[dependencies.encoding_rs]
+default_features = true
+features = []
+version = "0.8.34"
+
+[dependencies.env_logger]
+default_features = true
+features = []
+version = "0.11.3"
+
+[dependencies.fastrand]
+default_features = true
+features = []
+version = "2.1.0"
+
+[dependencies.flate2]
+default_features = true
+features = []
+version = "1.0.30"
+
+[dependencies.fnv]
+default_features = true
+features = []
+version = "1.0.7"
+
+[dependencies.form_urlencoded]
+default_features = true
+features = []
+version = "1.2.1"
+
+[dependencies.futures]
+default_features = true
+features = ["async-await", "compat", "executor", "io-compat", "std", "thread-pool"]
+version = "0.3.30"
+
+[dependencies.futures-channel]
+default_features = true
+features = []
+version = "0.3.30"
+
+[dependencies.futures-core]
+default_features = true
+features = []
+version = "0.3.30"
+
+[dependencies.futures-io]
+default_features = true
+features = []
+version = "0.3.30"
+
+[dependencies.futures-lite]
+default_features = true
+features = []
+version = "2.3.0"
+
+[dependencies.futures-util]
+default_features = true
+features = []
+version = "0.3.30"
+
+[dependencies.generic-array]
+default_features = true
+features = ["alloc", "const-default", "faster-hex", "internals", "serde", "zeroize"]
+version = "1.1.0"
+
+[dependencies.getrandom]
+default_features = true
+features = []
+version = "0.2.15"
+
+[dependencies.glob]
+default_features = true
+features = []
+version = "0.3.1"
+
+[dependencies.half]
+default_features = true
+features = []
+version = "2.4.1"
+
+[dependencies.hashbrown]
+default_features = true
+features = []
+version = "0.14.5"
+
+[dependencies.heck]
+default_features = true
+features = []
+version = "0.5.0"
+
+[dependencies.hex]
+default_features = true
+features = []
+version = "0.4.3"
+
+[dependencies.hmac]
+default_features = true
+features = []
+version = "0.12.1"
+
+[dependencies.home]
+default_features = true
+features = []
+version = "0.5.9"
+
+[dependencies.http]
+default_features = true
+features = []
+version = "1.1.0"
+
+[dependencies.http-body]
+default_features = true
+features = []
+version = "1.0.1"
+
+[dependencies.http-body-util]
+default_features = true
+features = []
+version = "0.1.2"
+
+[dependencies.httparse]
+default_features = true
+features = []
+version = "1.9.4"
+
+[dependencies.humantime]
+default_features = true
+features = []
+version = "2.1.0"
+
+[dependencies.hyper]
+default_features = true
+features = ["full"]
+version = "1.4.1"
+
+[dependencies.hyper-rustls]
+default_features = true
+features = []
+version = "0.27.2"
+
+[dependencies.hyper-util]
+default_features = true
+features = []
+version = "0.1.6"
+
+[dependencies.image]
+default_features = true
+features = []
+version = "0.25.1"
+
+[dependencies.indexmap]
+default_features = true
+features = []
+version = "2.2.6"
+
+[dependencies.indicatif]
+default_features = true
+features = []
+version = "0.17.8"
+
+[dependencies.indoc]
+default_features = true
+features = []
+version = "2.0.5"
+
+[dependencies.itertools]
+default_features = true
+features = []
+version = "0.13.0"
+
+[dependencies.itoa]
+default_features = true
+features = []
+version = "1.0.11"
+
+[dependencies.js-sys]
+default_features = true
+features = []
+version = "0.3.69"
+
+[dependencies.lazy_static]
+default_features = true
+features = []
+version = "1.5.0"
+
+[dependencies.libc]
+default_features = true
+features = []
+version = "0.2.155"
+
+[dependencies.libloading]
+default_features = true
+features = []
+version = "0.8.5"
+
+[dependencies.libm]
+default_features = true
+features = []
+version = "0.2.8"
+
+[dependencies.log]
+default_features = true
+features = []
+version = "0.4.22"
+
+[dependencies.lru]
+default_features = true
+features = []
+version = "0.12.3"
+
+[dependencies.memchr]
+default_features = true
+features = []
+version = "2.7.4"
+
+[dependencies.memmap2]
+default_features = true
+features = []
+version = "0.9.4"
+
+[dependencies.memoffset]
+default_features = true
+features = []
+version = "0.9.1"
+
+[dependencies.mime]
+default_features = true
+features = []
+version = "0.3.17"
+
+[dependencies.mime_guess]
+default_features = true
+features = []
+version = "2.0.5"
+
+[dependencies.mio]
+default_features = true
+features = ["net", "os-ext", "os-poll"]
+version = "1.0.0"
+
+[dependencies.native-tls]
+default_features = true
+features = []
+version = "0.2.12"
+
+[dependencies.nix]
+default_features = true
+features = []
+version = "0.29.0"
+
+[dependencies.nom]
+default_features = true
+features = []
+version = "7.1.3"
+
+[dependencies.num]
+default_features = true
+features = []
+version = "0.4.3"
+
+[dependencies.num-bigint]
+default_features = true
+features = []
+version = "0.4.6"
+
+[dependencies.num-integer]
+default_features = true
+features = []
+version = "0.1.46"
+
+[dependencies.num-traits]
+default_features = true
+features = []
+version = "0.2.19"
+
+[dependencies.num_cpus]
+default_features = true
+features = []
+version = "1.16.0"
+
+[dependencies.num_enum]
+default_features = true
+features = []
+version = "0.7.2"
+
+[dependencies.object]
+default_features = true
+features = []
+version = "0.36.1"
+
+[dependencies.once_cell]
+default_features = true
+features = []
+version = "1.19.0"
+
+[dependencies.ordered-float]
+default_features = true
+features = []
+version = "4.2.1"
+
+[dependencies.parking_lot]
+default_features = true
+features = ["arc_lock", "deadlock_detection", "serde"]
+version = "0.12.3"
+
+[dependencies.paste]
+default_features = true
+features = []
+version = "1.0.15"
+
+[dependencies.percent-encoding]
+default_features = true
+features = []
+version = "2.3.1"
+
+[dependencies.pest]
+default_features = true
+features = []
+version = "2.7.11"
+
+[dependencies.pest_derive]
+default_features = true
+features = []
+version = "2.7.11"
+
+[dependencies.petgraph]
+default_features = true
+features = []
+version = "0.6.5"
+
+[dependencies.phf]
+default_features = true
+features = ["macros"]
+version = "0.11.2"
+
+[dependencies.pin-project]
+default_features = true
+features = []
+version = "1.1.5"
+
+[dependencies.pin-project-lite]
+default_features = true
+features = []
+version = "0.2.14"
+
+[dependencies.pkg-config]
+default_features = true
+features = []
+version = "0.3.30"
+
+[dependencies.predicates]
+default_features = true
+features = []
+version = "3.1.0"
+
+[dependencies.pretty_assertions]
+default_features = true
+features = []
+version = "1.4.0"
+
+[dependencies.prettyplease]
+default_features = true
+features = ["verbatim"]
+version = "0.2.20"
+
+[dependencies.proc-macro-error]
+default_features = true
+features = []
+version = "1.0.4"
+
+[dependencies.proc-macro2]
+default_features = true
+features = ["span-locations"]
+version = "1.0.86"
+
+[dependencies.proptest]
+default_features = true
+features = []
+version = "1.5.0"
+
+[dependencies.prost]
+default_features = true
+features = []
+version = "0.13.1"
+
+[dependencies.prost-build]
+default_features = true
+features = []
+version = "0.13.1"
+
+[dependencies.prost-types]
+default_features = true
+features = []
+version = "0.13.1"
+
+[dependencies.pyo3]
+default_features = true
+features = []
+version = "0.22.2"
+
+[dependencies.quick-xml]
+default_features = true
+features = []
+version = "0.36.0"
+
+[dependencies.quote]
+default_features = true
+features = []
+version = "1.0.36"
+
+[dependencies.rand]
+default_features = true
+features = ["serde1", "small_rng"]
+version = "0.8.5"
+
+[dependencies.rand_chacha]
+default_features = true
+features = []
+version = "0.3.1"
+
+[dependencies.rand_core]
+default_features = true
+features = ["alloc", "getrandom", "serde", "serde1", "std"]
+version = "0.6.4"
+
+[dependencies.rayon]
+default_features = true
+features = []
+version = "1.10.0"
+
+[dependencies.regex]
+default_features = true
+features = []
+version = "1.10.5"
+
+[dependencies.reqwest]
+default_features = true
+features = ["blocking", "cookies", "json", "multipart"]
+version = "0.12.5"
+
+[dependencies.ring]
+default_features = true
+features = []
+version = "0.17.8"
+
+[dependencies.rstest]
+default_features = true
+features = []
+version = "0.21.0"
+
+[dependencies.rustc-hash]
+default_features = true
+features = []
+version = "2.0.0"
+
+[dependencies.rustc_version]
+default_features = true
+features = []
+version = "0.4.0"
+
+[dependencies.rustix]
+default_features = true
+features = []
+version = "0.38.34"
+
+[dependencies.rustls]
+default_features = true
+features = []
+version = "0.23.11"
+
+[dependencies.rustls-native-certs]
+default_features = true
+features = []
+version = "0.7.1"
+
+[dependencies.rustls-pemfile]
+default_features = true
+features = []
+version = "2.1.2"
+
+[dependencies.rustversion]
+default_features = true
+features = []
+version = "1.0.17"
+
+[dependencies.ryu]
+default_features = true
+features = []
+version = "1.0.18"
+
+[dependencies.scopeguard]
+default_features = true
+features = []
+version = "1.2.0"
+
+[dependencies.semver]
+default_features = true
+features = []
+version = "1.0.23"
+
+[dependencies.serde]
+default_features = true
+features = ["derive", "rc"]
+version = "1.0.204"
+
+[dependencies.serde_bytes]
+default_features = true
+features = []
+version = "0.11.15"
+
+[dependencies.serde_json]
+default_features = true
+features = ["raw_value"]
+version = "1.0.120"
+
+[dependencies.serde_urlencoded]
+default_features = true
+features = []
+version = "0.7.1"
+
+[dependencies.serde_with]
+default_features = true
+features = []
+version = "3.9.0"
+
+[dependencies.serde_yaml]
+default_features = true
+features = []
+version = "0.9.34+deprecated"
+
+[dependencies.serial_test]
+default_features = true
+features = []
+version = "3.1.1"
+
+[dependencies.sha1]
+default_features = true
+features = []
+version = "0.10.6"
+
+[dependencies.sha2]
+default_features = true
+features = []
+version = "0.10.8"
+
+[dependencies.slab]
+default_features = true
+features = []
+version = "0.4.9"
+
+[dependencies.smallvec]
+default_features = true
+features = []
+version = "1.13.2"
+
+[dependencies.socket2]
+default_features = true
+features = ["all"]
+version = "0.5.7"
+
+[dependencies.spin]
+default_features = true
+features = []
+version = "0.9.8"
+
+[dependencies.static_assertions]
+default_features = true
+features = []
+version = "1.1.0"
+
+[dependencies.strsim]
+default_features = true
+features = []
+version = "0.11.1"
+
+[dependencies.strum]
+default_features = true
+features = []
+version = "0.26.3"
+
+[dependencies.strum_macros]
+default_features = true
+features = []
+version = "0.26.4"
+
+[dependencies.subtle]
+default_features = true
+features = []
+version = "2.6.1"
+
+[dependencies.syn]
+default_features = true
+features = ["extra-traits", "fold", "full", "visit", "visit-mut"]
+version = "2.0.71"
+
+[dependencies.tar]
+default_features = true
+features = []
+version = "0.4.41"
+
+[dependencies.tempfile]
+default_features = true
+features = []
+version = "3.10.1"
+
+[dependencies.termcolor]
+default_features = true
+features = []
+version = "1.4.1"
+
+[dependencies.textwrap]
+default_features = true
+features = []
+version = "0.16.1"
+
+[dependencies.thiserror]
+default_features = true
+features = []
+version = "1.0.63"
+
+[dependencies.time]
+default_features = true
+features = []
+version = "0.3.36"
+
+[dependencies.tokio]
+default_features = true
+features = ["full", "test-util"]
+version = "1.38.1"
+
+[dependencies.tokio-rustls]
+default_features = true
+features = []
+version = "0.26.0"
+
+[dependencies.tokio-stream]
+default_features = true
+features = []
+version = "0.1.15"
+
+[dependencies.tokio-tungstenite]
+default_features = true
+features = []
+version = "0.23.1"
+
+[dependencies.tokio-util]
+default_features = true
+features = []
+version = "0.7.11"
+
+[dependencies.toml]
+default_features = true
+features = []
+version = "0.8.15"
+
+[dependencies.toml_edit]
+default_features = true
+features = []
+version = "0.22.16"
+
+[dependencies.tonic]
+default_features = true
+features = []
+version = "0.12.1"
+
+[dependencies.tonic-build]
+default_features = true
+features = []
+version = "0.12.1"
+
+[dependencies.tower]
+default_features = true
+features = ["full"]
+version = "0.4.13"
+
+[dependencies.tower-http]
+default_features = true
+features = ["full"]
+version = "0.5.2"
+
+[dependencies.tower-service]
+default_features = true
+features = []
+version = "0.3.2"
+
+[dependencies.tracing]
+default_features = true
+features = []
+version = "0.1.40"
+
+[dependencies.tracing-core]
+default_features = true
+features = []
+version = "0.1.32"
+
+[dependencies.tracing-log]
+default_features = true
+features = []
+version = "0.2.0"
+
+[dependencies.tracing-subscriber]
+default_features = true
+features = []
+version = "0.3.18"
+
+[dependencies.unicode-normalization]
+default_features = true
+features = []
+version = "0.1.23"
+
+[dependencies.unicode-segmentation]
+default_features = true
+features = []
+version = "1.11.0"
+
+[dependencies.unicode-width]
+default_features = true
+features = []
+version = "0.1.13"
+
+[dependencies.ureq]
+default_features = true
+features = []
+version = "2.10.0"
+
+[dependencies.url]
+default_features = true
+features = ["serde"]
+version = "2.5.2"
+
+[dependencies.urlencoding]
+default_features = true
+features = []
+version = "2.1.3"
+
+[dependencies.uuid]
+default_features = true
+features = ["serde", "v1", "v3", "v4", "v5", "v6", "v7", "v8"]
+version = "1.10.0"
+
+[dependencies.walkdir]
+default_features = true
+features = []
+version = "2.5.0"
+
+[dependencies.wasm-bindgen]
+default_features = true
+features = []
+version = "0.2.92"
+
+[dependencies.wasm-bindgen-futures]
+default_features = true
+features = []
+version = "0.4.42"
+
+[dependencies.web-sys]
+default_features = true
+features = []
+version = "0.3.69"
+
+[dependencies.webpki-roots]
+default_features = true
+features = []
+version = "0.26.3"
+
+[dependencies.which]
+default_features = true
+features = []
+version = "6.0.1"
+
+[dependencies.winapi]
+default_features = true
+features = []
+version = "0.3.9"
+
+[dependencies.windows]
+default_features = true
+features = []
+version = "0.58.0"
+
+[dependencies.windows-sys]
+default_features = true
+features = []
+version = "0.52.0"
+
+[dependencies.zerocopy]
+default_features = true
+features = ["__internal_use_only_features_that_work_on_stable"]
+version = "0.7.35"
+
+[dependencies.zeroize]
+default_features = true
+features = []
+version = "1.8.1"
+
+[dependencies.zip]
+default_features = true
+features = []
+version = "2.1.5"
+
+[dependencies.zstd]
+default_features = true
+features = []
+version = "0.13.2"
+
+[package]
+authors = ["Corust"]
+description = "Sandbox for Corust"
+edition = "2021"
+name = "corust"
+version = "0.1.0"

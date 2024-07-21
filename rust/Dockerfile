@@ -8,9 +8,11 @@ LABEL description="Corust containerized code execution environment."
 # Install packages in non-interactive mode
 ENV DEBIAN_FRONTEND="noninteractive"
 
+# Some Rust packages require a python3 interpreter
 RUN apt-get update && apt-get install -y \
     build-essential \
-    curl
+    curl \
+    python3
 
 # Create new user and disable root password
 RUN useradd -m corust -d /corust
@@ -46,7 +48,7 @@ FROM toolchain
 # Copy the `Cargo.toml` and build the Rust project in which user code will be run
 WORKDIR /corust
 RUN cargo init /corust
-COPY --chown=corust sandbox/Cargo.toml.sandbox /corust/Cargo.toml
+COPY --chown=corust populate_crates/Cargo.toml.sandbox /corust/Cargo.toml
 RUN cargo build --release
 RUN rm src/*.rs
 
