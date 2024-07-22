@@ -1,5 +1,5 @@
 :root {
-  --border-color: #cea6a0;
+  --border-color: #CEA6A0;
   --border: 1px solid var(--border-color);
 }
 
@@ -65,6 +65,7 @@
   justify-content: center;
   align-items: center;
   padding: 8px;
+  color: #C96556;
   font-weight: 600;
 }
 
@@ -98,10 +99,6 @@
 
 .runner-output .close {
   flex: 0;
-}
-
-.text-highlight {
-  background-color: rgba(255, 0, 0, 0.2); /* Red highlight */
 }
 
 .header-bar {

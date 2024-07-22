@@ -533,6 +533,10 @@ impl TextOperation {
         self.input_length
     }
 
+    pub fn output_length(&self) -> usize {
+        self.output_length
+    }
+
     /// Identifies a special case where the `TextOperation` is a no-op, i.e. it only retains the input text.
     pub fn noop(&self) -> bool {
         self.ops

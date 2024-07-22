@@ -3079,6 +3079,7 @@ dependencies = [
  "env_logger",
  "log",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "structopt",

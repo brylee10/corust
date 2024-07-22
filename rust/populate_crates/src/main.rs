@@ -18,6 +18,7 @@ use cargo::{
 use env_logger;
 use log;
 use reqwest::blocking::get;
+use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeSet, HashSet},
@@ -45,6 +46,11 @@ struct Opt {
     /// File path to Cargo.toml
     #[structopt(long, default_value = "Cargo.toml.sandbox")]
     cargo_toml: String,
+
+    /// Invalidate the Cargo cache, forcing a fresh download
+    /// This is useful when the cache may be outdated
+    #[structopt(long)]
+    invalid_cache: bool,
 }
 
 // Parameterizes a package dependency in Cargo.toml, serialized as a table:
@@ -74,7 +80,7 @@ struct CargoResources<'gctx> {
     crates_io_source: SourceId,
 }
 
-fn init_cargo_resources(ctx: &GlobalContext) -> Result<CargoResources> {
+fn init_cargo_resources(ctx: &GlobalContext, invalid_cache: bool) -> Result<CargoResources> {
     // On Cargo `CacheLocker`: https://docs.rs/cargo/0.80.0/cargo/util/cache_lock/index.html
     let _lock = ctx.acquire_package_cache_lock(CacheLockMode::DownloadExclusive)?;
     let crates_io_source = SourceId::crates_io(&ctx)?;
@@ -82,7 +88,9 @@ fn init_cargo_resources(ctx: &GlobalContext) -> Result<CargoResources> {
     // Get data from the the default remote `crates.io` registry
     // https://doc.rust-lang.org/cargo/reference/registries.html?search=GlobalContex
     let mut registry_source = RegistrySource::remote(crates_io_source, &yanked_whitelist, &ctx)?;
-    // registry_source.invalidate_cache();
+    if invalid_cache {
+        registry_source.invalidate_cache();
+    }
     registry_source.block_until_ready()?;
     log::debug!("Crates IO Source ID: {:?}", crates_io_source);
 
@@ -102,8 +110,7 @@ fn fetch_top_crate_names(num_crates: usize) -> Result<Vec<String>> {
             max_entries,
         ));
     }
-    // let mut crate_names = Vec::new();
-    let mut crate_names = Vec::new();
+    let mut crate_names = vec![];
     // Fetch the Atom feed (returns at most 250 entries)
     let response = get("https://lib.rs/std.atom")?;
     let body = response.text()?;
@@ -198,7 +205,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         .init();
     // Various metadata for Cargo (e.g. local Cargo installation)
     let ctx = GlobalContext::default()?;
-    let mut cargo_resources = init_cargo_resources(&ctx)?;
+    let mut cargo_resources = init_cargo_resources(&ctx, opt.invalid_cache)?;
 
     let top_crate_names = fetch_top_crate_names(opt.num_crates)?;
     let mut crates = Vec::new();
@@ -222,30 +229,37 @@ fn main() -> Result<(), Box<dyn Error>> {
                 Poll::Pending => panic!("Registry not ready to query"),
             }
         };
+
         // Select newest version that is not yanked, and not a pre-release
-        let newest_valid_version = matches
+        let newest_index_summary = matches
             .into_iter()
             .filter(|m| !m.is_yanked())
             .filter(|m| !m.as_summary().version().is_prerelease())
             .max_by_key(|m| m.as_summary().version().clone())
             // unwrap: at least one valid version should exist
             .unwrap_or_else(|| panic!("No valid versions found for {}", dep.name_in_toml()));
+        let newest_valid_version = newest_index_summary.as_summary().version().clone();
 
-        log::trace!("Newest valid version: {:?}", newest_valid_version);
-        log::trace!(
-            "Newest valid version version: {:?}",
-            newest_valid_version.as_summary().version()
+        // Drops any `BuildMetadata` and `Prerelease` fields
+        // This removes deprecated metadata from the version string
+        // For crates like `serde_yaml` where the most recent version is `0.9.34+deprecation`,
+        // this accepts the most recent version, acknowledging the crate is now unmaintained.
+        // This suppresses warnings like:
+        // ```
+        // warning: version requirement `0.9.34+deprecated` for dependency `serde_yaml`
+        // includes semver metadata which will be ignored, removing the metadata is recommended
+        // to avoid confusion
+        // ```
+        let newest_valid_version = Version::new(
+            newest_valid_version.major,
+            newest_valid_version.minor,
+            newest_valid_version.patch,
         );
 
-        log::trace!("Dependency Features: {:?}", dep.features());
-        for f in newest_valid_version.as_summary().features().iter() {
-            log::trace!("Index Summary Features: {:?}", f);
-        }
-        let package_id = newest_valid_version.package_id();
-
+        let package_id = newest_index_summary.package_id();
         let cargo_crate = Crate {
             name: dep.name_in_toml().to_string(),
-            version: newest_valid_version.as_summary().version().to_string(),
+            version: newest_valid_version.to_exact_req().to_string(),
             features: BTreeSet::new(),
             default_features: true,
             package_id,

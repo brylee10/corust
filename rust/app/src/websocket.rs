@@ -38,6 +38,10 @@ const CHECK_INACTIVE_USERS_SEC: u64 = 30;
 // Number of [`ContainerResponse`] messages that can be bufferred from a running container
 // in the channel
 const CONTAINER_RESPONSE_MSG_LIMIT: usize = 8;
+// Maximum size of a resulting document after transformation.
+// In practice, documents are not expected to be this large.
+// This is sufficient for ~2k lines of code.
+// const MAX_DOC_SIZE_CHARS: usize = 50_000;
 
 pub type SharedWsSender = Arc<Mutex<SplitSink<WebSocket, Message>>>;
 
