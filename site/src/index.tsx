@@ -6,6 +6,12 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { SessionHandler } from "./components/sessionHandler.tsx";
 import UserJoin from "./components/userJoin.tsx";
 
+// Do not log INFO or DEBUG messages in production
+if (process.env.REACT_APP_ENVIRONMENT?.toLowerCase() === "production") {
+  console.log = () => {};
+  console.debug = () => {};
+}
+
 // `root` is always present in `index.html`
 const element = document.getElementById("root") as HTMLElement;
 
