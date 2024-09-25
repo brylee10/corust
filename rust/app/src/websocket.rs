@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
 use corust_components::network::{UserId, UserList};
-use corust_components::server::{Server, ServerError};
+use corust_components::server::ServerError;
 use corust_components::BroadcastLocalDocUpdate;
 use corust_sandbox::container::{ContainerError, ContainerMessage, ExecuteCommand};
 use futures_util::stream::{SplitSink, SplitStream, StreamExt};
 use futures_util::SinkExt;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::sync::{broadcast, mpsc, Mutex, MutexGuard};
+use tokio::sync::{broadcast, mpsc, RwLock};
 
 use crate::execute::runner::{
     bcast_notify_output_size_error, container_response_to_runner_output, run_code,
@@ -43,7 +43,9 @@ const CONTAINER_RESPONSE_MSG_LIMIT: usize = 8;
 // This is sufficient for ~2k lines of code.
 // const MAX_DOC_SIZE_CHARS: usize = 50_000;
 
-pub type SharedWsSender = Arc<Mutex<SplitSink<WebSocket, Message>>>;
+/// Shared to concurrently listen to and handle different client and server messages
+/// in the core server loop.
+pub type SharedWsSender = Arc<RwLock<SplitSink<WebSocket, Message>>>;
 
 // These errors terminate the websocket connection
 #[derive(Debug, Error)]
@@ -81,50 +83,47 @@ pub(crate) async fn handle_websocket(
 ) {
     // unwrap: session_id is always valid, the user gets or creates a session on join, and the user joins
     // before connecting to the websocket
-    let session = session_map.lock().await.get_session(&session_id).unwrap();
-    let (bcast_tx, server) = {
-        let session = session.lock().await;
-        (session.bcast_tx(), session.server())
-    };
+    // The acquired DashMap lock is only held for the duration of this call
+    let session = session_map.get_session(&session_id).unwrap();
+    let (bcast_tx, server) = (session.bcast_tx(), session.server());
     let bcast_rx = bcast_tx.subscribe();
     let (mut ws_tx, ws_rx) = websocket.split();
 
     // Sync the late joiner with the current server doc state
-    send_snapshot(server.clone(), &mut ws_tx).await;
+    send_snapshot(Arc::clone(&server), &mut ws_tx).await;
 
     // User Update 1: On join, broadcast new user list
     {
-        let server = server.lock().await;
-        if let Err(_) = broadcast_user_list(bcast_tx.clone(), &server).await {
+        if let Err(_) = broadcast_user_list(bcast_tx.clone(), Arc::clone(&server)).await {
             return;
         }
     }
 
-    let shared_ws_tx = Arc::new(Mutex::new(ws_tx));
+    let shared_ws_tx = Arc::new(RwLock::new(ws_tx));
     let ping_timer = tokio::time::interval(Duration::from_secs(PING_INTERVAL_SEC));
     let check_inactive_users = tokio::time::interval(Duration::from_secs(CHECK_INACTIVE_USERS_SEC));
 
     // Spawn a task to receive messages
     tokio::task::spawn(handle_messages(
-        session.clone(),
-        server.clone(),
+        Arc::clone(&session),
+        Arc::clone(&server),
         bcast_tx.clone(),
-        shared_ws_tx.clone(),
+        Arc::clone(&shared_ws_tx),
         ws_rx,
         bcast_rx,
         ping_timer,
         check_inactive_users,
         user_id,
         session_id,
-        container_factory.clone(),
+        Arc::clone(&container_factory),
     ));
 }
 
 async fn broadcast_user_list<'a>(
     bcast_tx: tokio::sync::broadcast::Sender<ServerMessage>,
-    server: &MutexGuard<'a, Server>,
+    server: SharedServer,
 ) -> Result<(), WebSocketError> {
-    let user_list = UserList::new(server.active_users());
+    let user_list = UserList::new(server.read().await.active_users());
     let msg = ServerMessage::UserList(user_list);
 
     if let Err(e) = bcast_tx.send(msg) {
@@ -236,7 +235,6 @@ async fn handle_text_message(
     session: SharedSession,
     container_factory: SharedContainerFactory,
 ) -> Result<(), WebSocketError> {
-    let mut server = server.lock().await;
     // Convert network serialized method into native struct
     // to_str() is always valid because msg `is_text`
     // TODO: Replace this with `RemoteUpdate` for consistency
@@ -247,7 +245,7 @@ async fn handle_text_message(
         WsClientTextMsg::BroadcastDocUpdate(doc_update_stringified) => {
             let msg: BroadcastLocalDocUpdate =
                 serde_json::from_str(&doc_update_stringified.doc_update).unwrap();
-            let res = server.apply_client_operation(
+            let res = server.write().await.apply_client_operation(
                 msg.text_operation().clone(),
                 msg.last_server_state_id(),
                 msg.cursor_map(),
@@ -260,15 +258,15 @@ async fn handle_text_message(
 
             log::debug!(
                 "Current server document: {}",
-                server.current_document_state().document()
+                server.read().await.current_document_state().document()
             );
-            debug_assert!(&cursor_map == server.current_document_state().cursor_map());
+            debug_assert!(&cursor_map == server.read().await.current_document_state().cursor_map());
 
             let remote_update = RemoteUpdate {
                 // Todo, replace with real IDs
                 source: msg.user_id(),
                 dest: 0,
-                state_id: server.current_state_id(),
+                state_id: server.read().await.current_state_id(),
                 operation: text_op,
                 cursor_map,
             };
@@ -308,8 +306,7 @@ async fn handle_pong_message(server: SharedServer, user_id: UserId, session_id: 
     log::debug!(
         "Received pong from client {user_id} in session ID {session_id} at time {activity_time:?}"
     );
-    let mut server = server.lock().await;
-    match server.users_mut().get_mut(&user_id) {
+    match server.write().await.users_mut().get_mut(&user_id) {
         Some(user) => {
             user.activity.active = true;
             user.activity.last_activity = activity_time;
@@ -325,13 +322,12 @@ async fn handle_close_message(
     session_id: SessionId,
 ) -> Result<(), WebSocketError> {
     log::info!("Received graceful close message from client {user_id} in session ID {session_id}, removing user");
-    let mut server = server.lock().await;
-    match server.mark_user_inactive(user_id) {
+    match server.write().await.mark_user_inactive(user_id) {
         Ok(_) => {}
         Err(ServerError::UserIdNotFound(user_id)) => panic!("Received close user ID {user_id} which does not exist in session ID {session_id} user map"),
         Err(e) => panic!("Error marking user inactive on close: {e:?}"),
     }
-    broadcast_user_list(bcast_tx, &server).await?;
+    broadcast_user_list(bcast_tx, server).await?;
     Ok(())
 }
 
@@ -345,8 +341,7 @@ async fn forward_broadcast_message(
                 .unwrap_or_else(|e| panic!("Error serializing string {msg:?}, error {e}"));
             let msg: Message = Message::text(msg);
             log::trace!("Sending message to clients: {msg:?}");
-            let mut ws_tx = shared_ws_tx.lock().await;
-            if let Err(e) = ws_tx.send(msg).await {
+            if let Err(e) = shared_ws_tx.write().await.send(msg).await {
                 // User has ungracefully terminated their websocket connection.
                 // This may be due to refreshing the page. This is expected to occur, so
                 // the server will close its message handler on this connection.
@@ -375,19 +370,22 @@ async fn send_ping(
     server: SharedServer,
 ) {
     log::debug!("Sending ping to user ID {user_id} in session ID {session_id}");
-    let mut ws_tx = shared_ws_tx.lock().await;
-    if let Err(e) = ws_tx.send(Message::ping(Vec::new())).await {
+    if let Err(e) = shared_ws_tx
+        .write()
+        .await
+        .send(Message::ping(Vec::new()))
+        .await
+    {
         log::error!("Failed to send ping: {e}");
         return;
     }
 
     // User Update 3: Broadcast periodically in case non-gracefully disconnected users are pruned
-    let server = server.lock().await;
-    let user_list = UserList::new(server.active_users());
+    let user_list = UserList::new(server.read().await.active_users());
     let msg = ServerMessage::UserList(user_list);
     let msg = serde_json::ser::to_string(&msg).unwrap();
     let msg: Message = Message::text(msg);
-    if let Err(e) = ws_tx.send(msg).await {
+    if let Err(e) = shared_ws_tx.write().await.send(msg).await {
         log::error!("Failed to send ping: {e}");
     }
 }
@@ -467,17 +465,16 @@ async fn mark_remove_inactive_users(
     ws_tx: SharedWsSender,
 ) -> RemoveUsersRet {
     log::debug!("Checking if users in session ID {session_id} are inactive");
-    let mut server = server.lock().await;
 
     log::debug!(
         "All users (inactive + active) present in session ID {session_id}: {:?}",
-        server.users()
+        server.read().await.users()
     );
 
     let mut users_to_mark = Vec::new();
     let mut users_to_remove = Vec::new();
 
-    for (id, user) in server.users() {
+    for (id, user) in server.read().await.users() {
         let user_last_activity = user.activity.last_activity;
         if user_last_activity.elapsed().as_secs() > MARK_INACTIVE_USER_SEC {
             log::debug!(
@@ -495,20 +492,19 @@ async fn mark_remove_inactive_users(
 
     for user_id in users_to_mark.iter() {
         // unwrap: user_id is only added to vector if it exists in the user map
-        server.mark_user_inactive(*user_id).unwrap();
+        server.write().await.mark_user_inactive(*user_id).unwrap();
     }
 
     // Only users who are inactive for a long period are removed, freeing their username (their user ID is never reused though)
     for id in users_to_remove.iter() {
         // unwrap: user_id is only added to vector if it exists in the user map
-        let user = server.users_mut().remove(id).unwrap();
+        let user = server.write().await.users_mut().remove(id).unwrap();
         log::debug!("Removing inactive user {user:?} from session ID {session_id}");
     }
 
     if users_to_mark.contains(&user_id) {
         // tx close would initiate close handshake with client, but
-        let mut ws_tx = ws_tx.lock().await;
-        match ws_tx.close().await {
+        match ws_tx.write().await.close().await {
             Ok(_) => {
                 log::debug!("Closed websocket for inactive current user {user_id} from session ID {session_id}");
             }
@@ -523,7 +519,7 @@ async fn mark_remove_inactive_users(
 }
 
 async fn send_snapshot(server: SharedServer, ws_tx: &mut SplitSink<WebSocket, Message>) {
-    let server = server.lock().await;
+    let server = server.read().await;
     let snapshot = Snapshot {
         // ID fields currently not used in live implementation
         source: 0,

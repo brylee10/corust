@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
-use tokio::sync::Mutex;
+use tokio::sync::RwLock;
 
 use serde::Serialize;
 
 use corust_components::server::Server;
 use warp::http::StatusCode;
 
-pub type SharedServer = Arc<Mutex<Server>>;
+pub type SharedServer = Arc<RwLock<Server>>;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Rejections {

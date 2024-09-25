@@ -20,14 +20,13 @@ use thiserror::Error;
 use tokio::sync::{
     broadcast,
     mpsc::{error::SendError, Sender},
-    Mutex,
 };
 use warp::filters::ws::Message;
 
 use crate::{sessions::SharedSession, websocket::SharedWsSender};
 
-pub type SharedContainerFactory = Arc<Mutex<ContainerFactory>>;
-pub type SharedConcurrentRunChecker = Arc<Mutex<ConcurrentRunChecker>>;
+pub type SharedContainerFactory = Arc<ContainerFactory>;
+pub type SharedConcurrentRunChecker = Arc<ConcurrentRunChecker>;
 
 #[derive(Debug, Error)]
 pub enum RunCodeError {
@@ -165,10 +164,8 @@ impl RunProgressNotifier {
     async fn try_acquire_code_lock(&self) -> Result<(), RunCodeError> {
         // Acquire and drop the session lock. Do not hold it across the container run.
         log::debug!("Before acquire session lock in run_code");
-        let session = self.session.lock().await;
         log::debug!("Acquired session lock in run_code");
-        let concurrent_run_checker = session.concurrent_run_checker();
-        let concurrent_run_checker = concurrent_run_checker.lock().await;
+        let concurrent_run_checker = self.session.concurrent_run_checker();
         if let Err(e) = concurrent_run_checker.compare_exchange(self.run_type, false, true) {
             assert!(e, "Concurrent compilation check only returns error when a compilation of a RunType already exists");
             return Err(RunCodeError::ConcurrentCompilation(self.run_type));
@@ -193,9 +190,7 @@ impl Drop for RunProgressNotifier {
                 async move {
                     log::debug!("Dropping RunProgressNotifier");
                     // Reset the concurrent run flag
-                    let session = self_clone.session.lock().await;
-                    let concurrent_run_checker = session.concurrent_run_checker();
-                    let concurrent_run_checker = concurrent_run_checker.lock().await;
+                    let concurrent_run_checker = self_clone.session.concurrent_run_checker();
                     assert!(
                         concurrent_run_checker
                             .compare_exchange(self_clone.run_type, true, false)
@@ -223,7 +218,6 @@ pub(crate) async fn run_code(
         RunProgressNotifier::new(session.clone(), run_type, bcast_tx.clone());
     run_progress_notifier.try_acquire_code_lock().await?;
 
-    let container_factory = container_factory.lock().await;
     let container = container_factory.create_container_docker_backend().await?;
     // Factory no longer needed
     std::mem::drop(container_factory);
@@ -295,10 +289,9 @@ pub(crate) async fn ws_notify_concurrent_code_error(
         run_type: run_type.to_string(),
         run_state_update: RunStateUpdate::ConcurrentCompilation,
     });
-    let mut shared_ws_tx = shared_ws_tx.lock().await;
     let msg = serde_json::to_string(&server_message).unwrap();
     let msg = Message::text(msg);
-    if let Err(e) = shared_ws_tx.send(msg).await {
+    if let Err(e) = shared_ws_tx.write().await.send(msg).await {
         log::info!("All receiver handles have been closed. {e:?}");
     }
 }

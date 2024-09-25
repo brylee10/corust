@@ -5,12 +5,11 @@ use ansi_term::Color;
 use dotenv;
 use env_logger::Builder;
 use log::Level;
-use tokio::sync::Mutex;
 
 use std::io::Write;
 use warp::Filter;
 
-use corust_app::sessions::SessionMap;
+use corust_app::sessions::{SessionMap, SharedSessionMap};
 use corust_app::users::user_join_route;
 use corust_app::{root_page, websocket::*};
 use corust_sandbox::container::ContainerFactory;
@@ -45,9 +44,8 @@ async fn main() {
         .init();
 
     log::info!("Starting Rust server! 🚀");
-    let session_map = SessionMap::new();
-    let session_map = Arc::new(Mutex::new(session_map));
-    let container_factory = Arc::new(Mutex::new(ContainerFactory::new(MAX_CONCURRENT_CONTAINERS)));
+    let session_map: SharedSessionMap = Arc::new(SessionMap::new());
+    let container_factory = Arc::new(ContainerFactory::new(MAX_CONCURRENT_CONTAINERS));
 
     // warp::ws() is composed of many filters to handle HTTP -> websocket upgrade
     let websocket_route = websocket_route(Arc::clone(&session_map), Arc::clone(&container_factory));
