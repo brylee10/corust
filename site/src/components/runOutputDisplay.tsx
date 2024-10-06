@@ -123,6 +123,7 @@ function RunOutputDisplay({ runOutput, runStatus }: RunOutputProps) {
 
   useEffect(() => {
     if (runOutput) {
+      console.log("Run Output: " + JSON.stringify(runOutput));
       setStderr(runOutput.stderr);
       setStdout(runOutput.stdout);
     }
@@ -136,6 +137,7 @@ function RunOutputDisplay({ runOutput, runStatus }: RunOutputProps) {
     setOpen(true);
   }, []);
 
+  // <pre> preserves the error whitespacing
   const renderOpenedOutput = useCallback(() => {
     return (
       <div className="runner-output open">
@@ -149,11 +151,15 @@ function RunOutputDisplay({ runOutput, runStatus }: RunOutputProps) {
           )}
           <div className="body">
             <div className="subtitle">Standard Error</div>
-            <div className="content">{stderr}</div>
+            <div className="content">
+              <pre>{stderr}</pre>
+            </div>
           </div>
           <div className="body">
             <div className="subtitle">Standard Out</div>
-            <div className="content">{stdout}</div>
+            <div className="content">
+              <pre>{stdout}</pre>
+            </div>
           </div>
         </div>
         <div className="close">
