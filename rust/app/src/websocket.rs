@@ -46,6 +46,7 @@ const CONTAINER_RESPONSE_MSG_LIMIT: usize = 8;
 /// Shared to concurrently listen to and handle different client and server messages
 /// in the core server loop.
 pub type SharedWsSender = Arc<RwLock<SplitSink<WebSocket, Message>>>;
+type IsConnectionOpen = bool;
 
 // These errors terminate the websocket connection
 #[derive(Debug, Error)]
@@ -146,10 +147,10 @@ async fn handle_messages(
     session_id: SessionId,
     container_factory: SharedContainerFactory,
 ) -> Result<(), WebSocketError> {
-    loop {
+    'outer: loop {
         tokio::select! {
             next = ws_rx.next() => {
-                handle_ws_message(
+                let is_connection_open = handle_ws_message(
                     next,
                     Arc::clone(&server),
                     bcast_tx.clone(),
@@ -159,6 +160,11 @@ async fn handle_messages(
                     Arc::clone(&session),
                     Arc::clone(&container_factory)
                 ).await?;
+                // Terminate handler for this client connection. User has (un)gracefully
+                // closed the websocket.
+                if !is_connection_open {
+                    break 'outer;
+                }
             }
             msg = bcast_rx.recv() => {
                 // Receive broadcast messages, forward to client
@@ -173,11 +179,13 @@ async fn handle_messages(
                         Arc::clone(&server),
                         user_id,
                         Arc::clone(&shared_ws_tx)).await {
-                    return Ok(());
+                    break 'outer;
                 }
             },
         }
     }
+    log::debug!("Closed websocket handling loop for user ID {user_id:?} in session {session_id:?}");
+    Ok(())
 }
 
 async fn handle_ws_message(
@@ -189,7 +197,7 @@ async fn handle_ws_message(
     session_id: SessionId,
     session: SharedSession,
     container_factory: SharedContainerFactory,
-) -> Result<(), WebSocketError> {
+) -> Result<IsConnectionOpen, WebSocketError> {
     // handle client ws messages, broadcast to others
     match next {
         Some(msg) => match msg {
@@ -208,6 +216,7 @@ async fn handle_ws_message(
                     handle_pong_message(server, user_id, session_id).await;
                 } else if msg.is_close() {
                     handle_close_message(server, bcast_tx, user_id, session_id).await?;
+                    return Ok(false);
                 }
             }
             Err(e) => {
@@ -219,12 +228,12 @@ async fn handle_ws_message(
         // Close frame should be received before this point and exit early, so this typically will not occur
         None => {
             log::info!(
-                "User ID {user_id} in session ID {session_id} gracefully closed ws connection"
+                "User ID {user_id} in session ID {session_id} ws Stream exhausted, no more messages."
             );
-            return Ok(());
+            return Ok(false);
         }
     }
-    Ok(())
+    Ok(true)
 }
 
 async fn handle_text_message(
