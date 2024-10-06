@@ -126,14 +126,11 @@ pub(crate) fn container_response_to_runner_output(
     }
 }
 
-// Helper to reset concurrent run checker on drop and send a message to the client.
-// Async drop design pattern taken from: https://stackoverflow.com/questions/71541765/rust-async-drop
+// Broadcasts run progress and completion to all clients
 struct RunProgressNotifier {
     session: SharedSession,
     run_type: RunType,
     bcast_tx: broadcast::Sender<ServerMessage>,
-    // Indicates if drop logic should be run. Used to avoid repeated nested drops
-    dropped: bool,
 }
 
 impl Clone for RunProgressNotifier {
@@ -142,7 +139,6 @@ impl Clone for RunProgressNotifier {
             session: self.session.clone(),
             run_type: self.run_type,
             bcast_tx: self.bcast_tx.clone(),
-            dropped: self.dropped,
         }
     }
 }
@@ -157,7 +153,6 @@ impl RunProgressNotifier {
             session,
             run_type,
             bcast_tx,
-            dropped: false,
         }
     }
 
@@ -178,29 +173,15 @@ impl RunProgressNotifier {
 impl Drop for RunProgressNotifier {
     fn drop(&mut self) {
         log::debug!("RunProgressNotifier drop called");
-        // Drop cannot be async. Workaround by spawning an async task to reset the concurrent run flag
-        if !self.dropped {
-            log::debug!(
-                "RunProgressNotifier not dropped. Running drop logic on RunProgressNotifier"
-            );
-            tokio::spawn({
-                let mut self_clone = self.clone();
-                // Avoids rerunning drop logic on the cloned `RunProgressNotifier`
-                self_clone.dropped = true;
-                async move {
-                    log::debug!("Dropping RunProgressNotifier");
-                    // Reset the concurrent run flag
-                    let concurrent_run_checker = self_clone.session.concurrent_run_checker();
-                    assert!(
-                        concurrent_run_checker
-                            .compare_exchange(self_clone.run_type, true, false)
-                            .unwrap(),
-                        "Previous compilation should have been running"
-                    );
-                    bcast_code_run_finished(RunType::Execute, &self_clone.bcast_tx);
-                }
-            });
-        }
+        // Reset the concurrent run flag
+        let concurrent_run_checker = self.session.concurrent_run_checker();
+        assert!(
+            concurrent_run_checker
+                .compare_exchange(self.run_type, true, false)
+                .unwrap(),
+            "Previous compilation should have been running"
+        );
+        bcast_code_run_finished(RunType::Execute, &self.bcast_tx);
     }
 }
 

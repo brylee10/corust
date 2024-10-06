@@ -377,7 +377,7 @@ function App({ userId }: AppProps) {
                   } else if (
                     updateType === ClientResponseType.RemoteDocUpdate
                   ) {
-                    console.debug("Local doc update");
+                    console.debug("Applying an update to the local document");
                     const localDocUpdate: RemoteDocUpdate =
                       clientResponse.get_remote_doc_update() as RemoteDocUpdate;
                     dispatchTransaction(localDocUpdate.text_updates());

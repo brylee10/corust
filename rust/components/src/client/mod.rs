@@ -304,6 +304,7 @@ impl Client {
                     ))
                 }
             }
+            // The client only handles ServerMessages for maintaining collaboration state, not code execution
             ServerMessage::Run(_) | ServerMessage::RunStatus(_) => None,
             ServerMessage::Snapshot(snapshot) => {
                 self.document = snapshot.document.to_string();
