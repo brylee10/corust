@@ -73,6 +73,8 @@ pub struct Server {
     // where "recently" is defined as some threshold of time a user is inactive,
     // after which the `User` name and color may be reused.
     users: FnvHashMap<UserId, User>,
+    // Map of user_id to the state_id of the document state the user is at
+    user_doc_states: FnvHashMap<UserId, StateId>,
     next_id: UserId,
 }
 
@@ -93,6 +95,7 @@ impl Server {
             document_states,
             current_state_id: 0,
             users: FnvHashMap::default(),
+            user_doc_states: FnvHashMap::default(),
             next_id: 0,
         }
     }
@@ -176,6 +179,9 @@ impl Server {
         // overrides the server values when they were previously deleted.
         let _ = new_cursor_map.insert(user_id, *transformed_user_cursor_map.get(&user_id).unwrap());
 
+        // Prune any old document states
+        self.update_and_prune_document_states(user_id, state_id);
+
         self.current_state_id += 1;
         // Perf note: this requires an allocation of a new cursor hashmap each time
         let new_server_doc_state = DocumentState::new(
@@ -188,6 +194,23 @@ impl Server {
             .insert(self.current_state_id, new_server_doc_state);
 
         Ok((client_op_applied, new_cursor_map))
+    }
+
+    // Updates the last server state for user `user_id` to `state_id` and prunes any document states that are less than
+    // the minimal state id of all users to save memory.
+    fn update_and_prune_document_states(&mut self, user_id: UserId, state_id: StateId) {
+        // Prune any old document states
+        *self.user_doc_states.entry(user_id).or_insert(state_id) = state_id;
+        let mut states_to_remove = Vec::new();
+        for (id, _) in self.document_states.iter() {
+            if *id < state_id {
+                states_to_remove.push(*id);
+            }
+        }
+        for state_id in states_to_remove {
+            log::debug!("Pruning document with ID {state_id} from history");
+            self.document_states.remove(&state_id);
+        }
     }
 
     pub fn add_user(&mut self, user: User) -> Result<(), ServerError> {

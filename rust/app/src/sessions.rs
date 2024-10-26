@@ -77,7 +77,16 @@ impl Session {
         let server = Arc::new(RwLock::new(server));
         // Selected arbitrary max messages for broadcast channel
         // Chose broadcast because each connection will be a sender and receiver
-        let (bcast_tx, _) = channel(100000);
+        //
+        // Capacity limit: Previously was much larger, but led to high memory
+        // overhead for new sessions (100k caused 20MB memory increase per new session).
+        // 1k will be sufficient because the most frequent message would be RemoteUpdates.
+        // Even with 20 simultaneous collaborators editting quickly, each collaborator has 50
+        // updates in the time it takes to empty the queue. We would rate limit edit frequency to
+        // ~500 updates / min (avg 8 per second) which is more than the fastest typing speed WPM.
+        // The channel should be able to deque up to 20 * 8 messages / second = 160 messages / second
+        // (6ms per message avg would be extremely slow).
+        let (bcast_tx, _) = channel(100);
         Session {
             session_id,
             server,

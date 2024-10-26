@@ -269,6 +269,8 @@ pub struct RunContainerResult {
     stderr: ChildStderr,
 }
 
+/// A factory for creating containers with a specific backend.
+/// The factory controls the number of concurrent containers that can be run.
 pub struct ContainerFactory {
     // Controls number of concurrent containers
     semaphore: Arc<Semaphore>,
@@ -344,7 +346,6 @@ impl<B: Backend> Container<B> {
 
         let child_io = create_child_io(stdin, stdout, stderr)?;
 
-        // Container is finished executing
         self.is_executing.store(false, Ordering::SeqCst);
         Ok(ContainerRunRet { child, child_io })
     }

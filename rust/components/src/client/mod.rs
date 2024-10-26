@@ -133,14 +133,19 @@ pub struct Client {
     document: String,
     // Starts at 0, represents the empty document state
     last_server_state_id: ServerStateId,
-    // Let the last server update received by the client be `s_i` (the server state at time of `s_i` generation was `S_i`).
-    // After applying the transformation of this operation (`s_i'`) locally, let the client's state be called `c_j`. The `client_bridge`
-    // represents the series of operations that transforms the server state `S_i` to the client state `c_j`.
+    // Let the last server update received by the client be `s_i` (the server
+    // state at time of `s_i` generation was `S_i`).
+    // After applying the transformation of this operation (`s_i'`) locally,
+    // let the client's state be called `c_j`. The `client_bridge`
+    // represents the series of operations that transforms the server state
+    // `S_i` to the client state `c_j`.
     //
-    // OT transforms two different series of operations which began common starting state. The bridge is needed to use `S_i` as the starting state to
+    // OT transforms two different series of operations which began common
+    // starting state. The bridge is needed to use `S_i` as the starting state to
     // apply a transform of the future server update `s_{i+1}` to the client.
     //
-    // Only bridge operations are sent to the server because they are properly transformed to branch from a current/historic server state.
+    // Only bridge operations are sent to the server because they are properly
+    // transformed to branch from a current/historic server state.
     client_bridge: VecDeque<ClientOperation>,
     // Client user id
     user_id: UserId,

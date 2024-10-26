@@ -248,7 +248,7 @@ async fn handle_text_message(
     // to_str() is always valid because msg `is_text`
     // TODO: Replace this with `RemoteUpdate` for consistency
     let msg = msg.to_str().unwrap();
-    log::debug!("Received raw message from client: {msg:?}");
+    log::trace!("Received raw message from client: {msg:?}");
     let client_ws_msg: WsClientTextMsg = serde_json::from_str(msg).unwrap();
     match client_ws_msg {
         WsClientTextMsg::BroadcastDocUpdate(doc_update_stringified) => {
@@ -265,7 +265,7 @@ async fn handle_text_message(
             }
             let (text_op, cursor_map) = res.unwrap();
 
-            log::debug!(
+            log::trace!(
                 "Current server document: {}",
                 server.read().await.current_document_state().document()
             );
