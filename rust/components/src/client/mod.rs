@@ -13,15 +13,20 @@
 //! so the server only needs to apply one iteration of OT per client operation and so the server needs to cache no additional state aside from the server's
 //! own update history.
 
+mod rate_limiter;
+
 #[cfg(debug_assertions)]
 use crate::network::sanity_check_overlapping_keys_match;
+
 use anyhow::Result;
+use rate_limiter::{RateLimiter, RateLimiterError};
 
 #[cfg(feature = "js")]
 use crate::web_utils::{self, debug};
 use crate::{
     network::{
-        transform_cursor, transform_cursor_map, CursorMap, CursorPos, TextOpAndCursorMap, UserId,
+        transform_cursor, transform_cursor_map, CursorMap, CursorPos, CursorTransformError,
+        TextOpAndCursorMap, UserId,
     },
     ClientResponse, ClientResponseData, ClientResponseType, RemoteDocUpdate,
 };
@@ -38,12 +43,31 @@ use corust_transforms::xforms::{
 };
 use corust_transforms::{ops, xforms::TextUpdate};
 use std::collections::hash_map::Entry;
+
+#[cfg(target_arch = "wasm32")]
+use web_time::{Duration, Instant};
+
+#[cfg(not(target_arch = "wasm32"))]
+use std::time::{Duration, Instant};
 use std::{
     collections::VecDeque,
     ops::{Deref, DerefMut},
 };
 use thiserror::Error;
 use wasm_bindgen::prelude::*;
+
+/// Maximum 1000 document updates a minute.
+/// For reference, 1000 character updates per minute is about 200 words per minute.
+const MAX_UPDATES_PER_MINUTE: usize = 1000;
+
+/// Maximum cumulative size of documents (in characters) sent per minute.
+/// For reference, 1k lines of code would have at most ~50k characters. It is unlikely a user
+/// will repeatedly copy and delete such large code blocks.
+const MAX_DOC_SIZE_PER_MINUTE: usize = 200000;
+
+/// For reference, 100k characters is about 2k lines of code.
+/// It is unlikely any user will have a program this large.
+const MAX_DOC_CHARS: usize = 100000;
 
 /// Wrapper around a [`Client`] that can be added to a [`Network`]. Used in testing.
 pub struct ClientNetwork {
@@ -63,7 +87,7 @@ impl ClientNetwork {
         let id = network.next_id();
         let network_shared = network.network_shared();
         Self {
-            inner: Client::new(id),
+            inner: Client::new(id, MAX_UPDATES_PER_MINUTE, MAX_DOC_SIZE_PER_MINUTE),
             network_shared,
             id,
         }
@@ -110,7 +134,7 @@ impl DerefMut for ClientNetwork {
 #[derive(Error, Debug)]
 pub enum ClientError {
     #[error(transparent)]
-    CursorError(#[from] anyhow::Error),
+    CursorError(#[from] CursorTransformError),
     #[error(
         "Unexpected cursor input. Expected cursor after transform is {expected:?} but received cursor {received:?}"
     )]
@@ -118,6 +142,24 @@ pub enum ClientError {
         expected: CursorPos,
         received: CursorPos,
     },
+    #[error("You type too fast! Document update frequency exceeded rate limit ({rate_limit}/s).")]
+    DocUpdateLimiter {
+        rate_limit: usize,
+        #[source]
+        source: RateLimiterError,
+    },
+    #[error(
+        "You're writing a lot! Total characters changed exceeded rate limit ({rate_limit}/s)."
+    )]
+    DocCharChangeLimiter {
+        rate_limit: usize,
+        #[source]
+        source: RateLimiterError,
+    },
+    #[error(
+        "You're writing a lot! Document size exceeded maximum size of {max_doc_chars} characters."
+    )]
+    ExceededMaxDocSize { max_doc_chars: usize },
 }
 
 impl From<ClientError> for JsValue {
@@ -126,9 +168,9 @@ impl From<ClientError> for JsValue {
         JsValue::from_str(&error_message)
     }
 }
-#[wasm_bindgen]
+
 /// Standalone client with core operations and state for client document management with operational transform.
-#[derive(Default)]
+#[wasm_bindgen]
 pub struct Client {
     document: String,
     // Starts at 0, represents the empty document state
@@ -147,6 +189,12 @@ pub struct Client {
     // Only bridge operations are sent to the server because they are properly
     // transformed to branch from a current/historic server state.
     client_bridge: VecDeque<ClientOperation>,
+    // Limits the rate of client document updates, which indirectly throttles client
+    // updates to the server
+    doc_update_limiter: RateLimiter,
+    // Limits the total number of characters changed in documents over a time period,
+    // which indirectly throttles the client updates to the server
+    doc_size_limiter: RateLimiter,
     // Client user id
     user_id: UserId,
     // Map of all client cursors
@@ -155,14 +203,34 @@ pub struct Client {
 
 #[wasm_bindgen]
 impl Client {
-    pub fn new(user_id: UserId) -> Self {
+    pub fn new(
+        user_id: UserId,
+        max_updates_per_minute: usize,
+        max_doc_size_per_minute: usize,
+    ) -> Self {
         // Forward Rust panics to JS console as errors
         console_error_panic_hook::set_once();
+
+        let doc_update_limiter_builder = RateLimiter::builder()
+            .max_tokens(max_updates_per_minute)
+            .tokens(max_updates_per_minute)
+            .interval(Duration::from_secs(1))
+            // Refill the rate limiter fully over 1 minute
+            .refill(usize::div_ceil(max_updates_per_minute, 60));
+
+        let doc_size_limiter_builder = RateLimiter::builder()
+            .max_tokens(max_doc_size_per_minute)
+            .tokens(max_doc_size_per_minute)
+            .interval(Duration::from_secs(1))
+            // Refill the rate limiter fully over 1 minute
+            .refill(usize::div_ceil(max_doc_size_per_minute, 60));
 
         Self {
             document: String::new(),
             last_server_state_id: 0,
             client_bridge: VecDeque::new(),
+            doc_update_limiter: doc_update_limiter_builder.build(),
+            doc_size_limiter: doc_size_limiter_builder.build(),
             user_id,
             // Default cursor map means no cursors are present on the screen,
             // including the current user
@@ -536,7 +604,7 @@ impl Client {
         new_document: &str,
         text_op: TextOperation,
         new_cursor_pos: &CursorPos,
-    ) -> Result<TextOpAndCursorMap> {
+    ) -> Result<TextOpAndCursorMap, ClientError> {
         #[cfg(all(feature = "metrics", feature = "js"))]
         let start = web_utils::now(); // Start timing
 
@@ -549,6 +617,28 @@ impl Client {
             "Client update_document finished edit_ops: {}ms",
             web_utils::now() - pre_edit_ops
         ));
+
+        // Client side rate limiting and text validation
+        self.doc_update_limiter
+            .send_one(Instant::now())
+            .map_err(|e| ClientError::DocUpdateLimiter {
+                rate_limit: self.doc_update_limiter.max_tokens(),
+                source: e,
+            })?;
+        let text_delta = text_op.chars_changed();
+
+        self.doc_size_limiter
+            .send_many(Instant::now(), text_delta)
+            .map_err(|e| ClientError::DocCharChangeLimiter {
+                rate_limit: self.doc_size_limiter.max_tokens(),
+                source: e,
+            })?;
+        if text_op.output_length() > MAX_DOC_CHARS {
+            return Err(ClientError::ExceededMaxDocSize {
+                max_doc_chars: MAX_DOC_CHARS,
+            });
+        }
+
         self.document = new_document;
 
         // Treat this user's cursor as a special case to allow sanity check that `input_cursor == transformed_cursor`
@@ -764,5 +854,94 @@ impl UserCursorPos {
 
     pub fn cursor_pos(&self) -> CursorPos {
         self.cursor_pos
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use ops::CompoundOp;
+
+    use super::*;
+
+    mod rate_limiter {
+        use super::*;
+        #[test]
+        #[should_panic(expected = "DocUpdateLimiter")]
+        fn test_client_hit_rate_limit() {
+            let mut client = Client::new(0, 1, 0);
+
+            // This will almost certainly panic, given the max tokens is 1 and the sending interval
+            // is a tight loop
+            for _ in 0..1000 {
+                let op = CompoundOp::Retain { count: 0 };
+                client
+                    .update_document(
+                        "",
+                        TextOperation::from_ops(std::iter::once(op), None, false),
+                        &CursorPos::default(),
+                    )
+                    .unwrap();
+            }
+        }
+
+        #[test]
+        fn test_client_replenishes_tokens() {
+            let mut client = Client::new(0, 600, 0);
+
+            // This will almost certainly throw an error, given the max tokens is 1 and the
+            // sending interval is a tight loop
+            let mut error_present = false;
+            for _ in 0..10000 {
+                let op = CompoundOp::Retain { count: 0 };
+                error_present |= client
+                    .update_document(
+                        "",
+                        TextOperation::from_ops(std::iter::once(op), None, false),
+                        &CursorPos::default(),
+                    )
+                    .is_err();
+            }
+            assert!(error_present);
+
+            // Test client refreshes tokens
+            // 600 / 60 = 10 tokens should refresh in 1 second
+            std::thread::sleep(std::time::Duration::from_secs(1));
+
+            let op = CompoundOp::Retain { count: 0 };
+            assert!(dbg!(client.update_document(
+                "",
+                TextOperation::from_ops(std::iter::once(op), None, false),
+                &CursorPos::default(),
+            ))
+            .is_ok());
+        }
+
+        #[test]
+        #[should_panic(expected = "DocCharChangeLimiter")]
+        fn test_client_doc_size_throttle() {
+            let mut client = Client::new(0, 10000, 10);
+
+            // This will almost certainly panic, given the max doc size change 10 and the sending interval
+            // is a tight loop
+            for _ in 0..1000 {
+                let op = CompoundOp::Insert { text: format!("a") };
+                client
+                    .update_document(
+                        "a",
+                        TextOperation::from_ops(std::iter::once(op), None, false),
+                        &CursorPos::default(),
+                    )
+                    .unwrap();
+
+                let op = CompoundOp::Delete { count: 1 };
+                client
+                    .update_document(
+                        "",
+                        TextOperation::from_ops(std::iter::once(op), None, false),
+                        &CursorPos::default(),
+                    )
+                    .unwrap();
+            }
+        }
     }
 }

@@ -196,6 +196,13 @@ const executeCommandToObj = (msg: ExecuteCommand): RustExecuteCommand => {
 };
 
 function App({ userId }: AppProps) {
+  // Maximum 1000 document updates a minute.
+  // For reference, 1000 character updates per minute is a typing speed of ~200 words per minute.
+  const maxUpdatesPerMinute = 1000;
+  // Maximum cumulative size of documents (in characters) sent per minute.
+  // For reference, 1k lines should have at most ~50k characters. It is unlikely a user
+  // will repeatedly copy and delete such large code blocks.
+  const maxDocSizePerMinute = 200000;
   // Route params
   const params = useParams();
   // CargoOutput has schema: Object {stdout: string, stderr: string, status: number}
@@ -212,12 +219,17 @@ function App({ userId }: AppProps) {
   >([]);
   const [userArr, setUserArr] = useState<UserInner[]>([]);
   const [wsOpen, setWsOpen] = useState<boolean>(true);
+  const [wsDisconnectMsg, setWsDisconnectMsg] = useState<String>(
+    "Disconnected from server. Please refresh the page to rejoin."
+  );
   const [remoteAnnotationType] = useState<AnnotationType<boolean>>(
     new AnnotationType()
   );
   // The client object should be created once per component render. It cannot be passed in as
   // a prop and modified in place, otherwise the component would be impure.
-  const [client] = useState<Client>(Client.new(userId));
+  const [client] = useState<Client>(
+    Client.new(userId, maxUpdatesPerMinute, maxDocSizePerMinute)
+  );
   // CodeMirror view
   const [view, setView] = useState<EditorView | undefined>(undefined);
   // Event listeners capture static state, so we need to use refs for indirection to the latest state
@@ -582,12 +594,26 @@ function App({ userId }: AppProps) {
           return;
         }
         const prevDocLen = viewUpdate.changes.desc.length;
-        const docUpdateStringified = client.update_document_wasm(
-          editorText,
-          prevDocLen,
-          textUpdates,
-          cursorPos
-        );
+        let docUpdateStringified = "";
+        try {
+          docUpdateStringified = client.update_document_wasm(
+            editorText,
+            prevDocLen,
+            textUpdates,
+            cursorPos
+          );
+        } catch (error: unknown) {
+          console.error(
+            "Disconnecting from websocket. Received client update document error: " +
+              error
+          );
+          setWsDisconnectMsg(
+            (msg) =>
+              String(error) +
+              " Disconnected from server. Please refresh the page to rejoin."
+          );
+          ws.current?.close();
+        }
         const clientDoc = client.document();
         console.assert(
           clientDoc === editorText,
@@ -913,9 +939,7 @@ function App({ userId }: AppProps) {
         TransitionComponent={Grow}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
-        <Alert severity="error">
-          Disconnected from server. Please refresh the page to rejoin.
-        </Alert>
+        <Alert severity="error">{wsDisconnectMsg}</Alert>
       </Snackbar>
     </div>
   );

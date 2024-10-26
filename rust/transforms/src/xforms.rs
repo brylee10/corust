@@ -537,6 +537,11 @@ impl TextOperation {
         self.output_length
     }
 
+    /// Total number of characters the operations affect
+    pub fn chars_changed(&self) -> usize {
+        self.ops.iter().map(|op| op.chars_changed()).sum()
+    }
+
     /// Identifies a special case where the `TextOperation` is a no-op, i.e. it only retains the input text.
     pub fn noop(&self) -> bool {
         self.ops
@@ -1158,6 +1163,19 @@ mod test {
             let composed_op = ops1.compose(&ops2).unwrap();
             let output_text = composed_op.apply(input_text).unwrap();
             assert_eq!(output_text, target_text);
+        }
+
+        #[test]
+        fn test_chars_changed() {
+            let ops = vec![
+                CompoundOp::Retain { count: 5 },
+                CompoundOp::Insert {
+                    text: "world".to_string(),
+                },
+                CompoundOp::Delete { count: 2 },
+            ];
+            let text_op = TextOperation::from_ops(ops.into_iter(), None, false);
+            assert_eq!(text_op.chars_changed(), 7);
         }
     }
 

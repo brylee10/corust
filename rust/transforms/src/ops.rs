@@ -97,6 +97,15 @@ impl CompoundOp {
             CompoundOp::Retain { count } => *count,
         }
     }
+
+    // Number of characters this operation changes
+    pub fn chars_changed(&self) -> usize {
+        match self {
+            CompoundOp::Insert { text } => text.chars().count(),
+            CompoundOp::Delete { count } => *count,
+            _ => 0,
+        }
+    }
 }
 
 #[derive(Default, Clone, Debug)]
