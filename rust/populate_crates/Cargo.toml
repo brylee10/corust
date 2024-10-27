@@ -8,6 +8,7 @@ anyhow                  = "1.0.86"
 atom_syndication        = "0.12"
 cargo                   = "0.80"
 env_logger              = "0.11"
+lazy_static             = "1.5.0"
 log                     = "0.4"
 reqwest                 = { version = "0.12", features = ["blocking"] }
 semver                  = "1.0.22"

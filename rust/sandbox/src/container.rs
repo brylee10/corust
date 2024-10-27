@@ -100,7 +100,7 @@ impl From<CargoCommand> for Command {
     fn from(cargo_command: CargoCommand) -> Self {
         let mut command = Command::new("cargo");
         match cargo_command {
-            CargoCommand::Build => command.arg("build"),
+            CargoCommand::Build => command.arg("build").arg("--release"),
             CargoCommand::Run => command.arg("run").arg("--release"),
             CargoCommand::Test => command.arg("test"),
             CargoCommand::Clippy => command.arg("clippy"),
@@ -678,7 +678,7 @@ mod test {
         assert!(exit_code.success());
 
         // Get the last value
-        let mut response = None;
+        let mut response: Option<ContainerResponse> = None;
         while let Some(value) = child_io.child_stdout_rx.recv().await {
             response = Some(value);
         }
@@ -700,5 +700,49 @@ mod test {
             .with_timeout()
             .await;
         assert!(matches!(res, Err(tokio::time::error::Elapsed { .. })));
+    }
+
+    #[tokio::test]
+    async fn test_library_crate() {
+        // Tests a library target type can be compiled
+        let backend = init_test_backend();
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
+        let container = container_factory.create_container(backend).await.unwrap();
+        let ContainerRunRet {
+            mut child,
+            mut child_io,
+        } = container.run().await.unwrap();
+
+        let execute_command = ExecuteCommand::new(
+            "struct Test { x: i32 }".to_string(),
+            TargetType::Library,
+            CargoCommand::Build,
+        );
+
+        let message = ContainerMessage::Execute(execute_command);
+        child_io
+            .child_stdin_tx
+            .as_ref()
+            .unwrap()
+            .send(message)
+            .await
+            .unwrap();
+
+        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        assert!(exit_code.success());
+
+        // Get the last value
+        let mut response: Option<ContainerResponse> = None;
+        while let Some(value) = child_io.child_stdout_rx.recv().await {
+            response = Some(value);
+        }
+        let response = response.unwrap();
+        assert!(matches!(response, ContainerResponse::Execute(_)));
+        match response {
+            ContainerResponse::Execute(response) => {
+                let stderr = String::from_utf8_lossy(&response.stderr);
+                assert_contains!(stderr, "Finished `release` profile");
+            }
+        }
     }
 }

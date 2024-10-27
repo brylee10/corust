@@ -34,7 +34,7 @@ import {
   Client,
 } from "corust-components/corust_components.js";
 import { useParams } from "react-router-dom";
-import { Alert, Button, Snackbar, styled, Grow, Tooltip } from "@mui/material";
+import { Alert, Snackbar, Grow, Tooltip } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import {
   RunOutputDisplay,
@@ -45,40 +45,7 @@ import {
   ServerRunStatus,
 } from "./components/runOutputDisplay.tsx";
 import HeaderBar from "./components/headerBar/headerBar.tsx";
-
-// Define constants once
-const CustomButton = styled(Button)({
-  padding: "10px 20px",
-  // Rust!
-  backgroundColor: "#CE412B",
-  color: "white",
-  border: "none",
-  borderRadius: "5px",
-  cursor: "pointer",
-  fontWeight: "bold",
-  lineHeight: "1.25",
-  height: 38,
-  alignSelf: "center",
-  "&:hover": {
-    backgroundColor: "#CE412B",
-  },
-});
-
-const DisabledButton = styled(Button)({
-  padding: "10px 20px",
-  backgroundColor: "gray",
-  color: "white",
-  border: "none",
-  // Do not show a cursor helper
-  cursor: "default",
-  borderRadius: "5px",
-  fontWeight: "bold",
-  lineHeight: "1.25",
-  alignSelf: "center",
-  "&:hover": {
-    backgroundColor: "gray",
-  },
-});
+import RunButton from "./components/headerBar/runButton.tsx";
 
 // Interfaces/Type definitions
 
@@ -195,6 +162,18 @@ const executeCommandToObj = (msg: ExecuteCommand): RustExecuteCommand => {
   };
 };
 
+// https://github.com/rust-lang/rust-playground/blob/main/ui/frontend/selectors/index.ts
+const HAS_MAIN_FUNCTION_RE = new RegExp(
+  [
+    /^([^\n\r\/]*;)?/,
+    /\s*(pub\s+)?\s*(const\s+)?\s*(async\s+)?\s*/,
+    /fn\s+main\s*\(\s*(\/\*.*\*\/)?\s*\)/,
+  ]
+    .map((r) => r.source)
+    .join(""),
+  "m"
+);
+
 function App({ userId }: AppProps) {
   // Maximum 1000 document updates a minute.
   // For reference, 1000 character updates per minute is a typing speed of ~200 words per minute.
@@ -217,6 +196,10 @@ function App({ userId }: AppProps) {
   const [collabSelections, setCollabSelections] = useState<
     UserSelectionRange[]
   >([]);
+  const [targetType, setTargetType] = useState<TargetType>(TargetType.Library);
+  const [cargoCommand, setCargoCommand] = useState<CargoCommand>(
+    CargoCommand.Build
+  );
   const [userArr, setUserArr] = useState<UserInner[]>([]);
   const [wsOpen, setWsOpen] = useState<boolean>(true);
   const [wsDisconnectMsg, setWsDisconnectMsg] = useState<String>(
@@ -510,16 +493,25 @@ function App({ userId }: AppProps) {
     clientRef.current = client;
   }, [client]);
 
-  const compileCode = useCallback(async () => {
+  useEffect(() => {
+    const isBinary = HAS_MAIN_FUNCTION_RE.test(codeContainerText.code);
+    setTargetType(isBinary ? TargetType.Binary : TargetType.Library);
+    setCargoCommand(isBinary ? CargoCommand.Run : CargoCommand.Build);
+  }, [codeContainerText.code]);
+
+  // Currently makes simple assumption that binary crates are always run
+  // and library crates are built
+  const executeCode = useCallback(async () => {
     const executeCommand = {
       code: codeContainerText.code,
-      targetType: TargetType.Binary,
-      cargoCommand: CargoCommand.Run,
+      targetType: targetType,
+      cargoCommand: cargoCommand,
     };
+
     const executeCommandObj = executeCommandToObj(executeCommand);
     console.debug("Sending execute command over ws: ", executeCommand);
     wsSend(executeCommandObj);
-  }, [codeContainerText.code, wsSend]);
+  }, [codeContainerText.code, wsSend, targetType, cargoCommand]);
 
   const handleEditorChange = useCallback(
     (viewUpdate: ViewUpdate) => {
@@ -882,43 +874,15 @@ function App({ userId }: AppProps) {
     textHighlightDecoration,
   ]);
 
-  const renderRunButton = useCallback(() => {
-    const enabledButton = (
-      <>
-        <CustomButton
-          variant="contained"
-          size="small"
-          onClick={() => {
-            setShowCargoOutput(true);
-            compileCode();
-          }}
-          endIcon={<PlayArrowIcon />}
-        >
-          RUN
-        </CustomButton>
-      </>
-    );
-
-    const disabledButton = (
-      <Tooltip title="Code executing, cannot start simultaneous run.">
-        <DisabledButton
-          variant="contained"
-          size="small"
-          endIcon={<PlayArrowIcon />}
-        >
-          RUN
-        </DisabledButton>
-      </Tooltip>
-    );
-    return runStatus?.runState !== RunState.Running
-      ? enabledButton
-      : disabledButton;
-  }, [compileCode, runStatus]);
-
   return (
     <div className="App">
       <HeaderBar
-        renderRunButton={renderRunButton}
+        RunButton={RunButton({
+          runStatus,
+          setShowCargoOutput,
+          executeCode,
+          cargoCommand,
+        })}
         userArr={userArr}
         selfUserId={client.user_id()}
       />
@@ -946,3 +910,4 @@ function App({ userId }: AppProps) {
 }
 
 export default App;
+export { CargoCommand };

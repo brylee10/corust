@@ -22,12 +22,12 @@ const CustomButton = styled(Button)({
 });
 
 interface HeaderBarProps {
-  renderRunButton: () => React.ReactNode;
+  RunButton: React.ReactNode;
   userArr: UserInner[];
   selfUserId: bigint;
 }
 
-function HeaderBar({ renderRunButton, userArr, selfUserId }: HeaderBarProps) {
+function HeaderBar({ RunButton, userArr, selfUserId }: HeaderBarProps) {
   const [openCopyNotification, setOpenCopyNotification] = React.useState(false);
 
   const copyCorustLink = useCallback(() => {
@@ -38,7 +38,7 @@ function HeaderBar({ renderRunButton, userArr, selfUserId }: HeaderBarProps) {
   return (
     <>
       <div className="header-bar">
-        {renderRunButton()}
+        {RunButton}
         <div className="header-left">
           <UserIconList userArr={userArr} selfUserId={selfUserId} />
           <Tooltip title="Copy Corust Link">

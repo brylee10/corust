@@ -3093,6 +3093,7 @@ dependencies = [
  "atom_syndication",
  "cargo",
  "env_logger",
+ "lazy_static",
  "log",
  "reqwest",
  "semver",

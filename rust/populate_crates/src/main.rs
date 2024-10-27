@@ -16,18 +16,24 @@ use cargo::{
     },
 };
 use env_logger;
+use lazy_static::lazy_static;
 use log;
 use reqwest::blocking::get;
 use semver::Version;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{BTreeSet, HashSet},
+    collections::{BTreeSet, HashMap, HashSet},
     error::Error,
     fs,
     task::Poll,
 };
 use structopt::StructOpt;
 use toml::Value;
+
+lazy_static! {
+    static ref CRATE_FEATURES: HashMap<&'static str, &'static str> =
+        HashMap::from([("derive_more", "full")]);
+}
 
 #[derive(StructOpt, Debug)]
 #[structopt(
@@ -36,7 +42,7 @@ use toml::Value;
 )]
 struct Opt {
     /// Number of crates to fetch
-    #[structopt(long, default_value = "200")]
+    #[structopt(long, default_value = "250")]
     num_crates: usize,
 
     /// Log level
@@ -239,7 +245,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             // unwrap: at least one valid version should exist
             .unwrap_or_else(|| panic!("No valid versions found for {}", dep.name_in_toml()));
         let newest_valid_version = newest_index_summary.as_summary().version().clone();
-
+        log::debug!("Newest valid version: {}", newest_valid_version);
         // Drops any `BuildMetadata` and `Prerelease` fields
         // This removes deprecated metadata from the version string
         // For crates like `serde_yaml` where the most recent version is `0.9.34+deprecation`,
@@ -274,6 +280,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         if let Some((features, default_features)) = playground_metadata_features(&package) {
             c.features = features;
             c.default_features = default_features;
+        } else {
+            // Manually set features for certain crates without playground metadata
+            if let Some(feature) = CRATE_FEATURES.get(c.name.as_str()) {
+                c.features.insert(InternedString::new(feature));
+            }
         }
     }
 
