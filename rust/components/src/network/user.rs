@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
+/// Unique user id per session
 pub type UserId = u64;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
     inner: UserInner,
     // Users are marked inactive if they do not respond to PING requests
@@ -36,7 +37,7 @@ impl User {
 }
 
 #[wasm_bindgen]
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct UserInner {
     user_id: UserId,
     username: String,
@@ -104,3 +105,15 @@ pub struct Activity {
     // Time of last received pong or user creation time
     pub last_activity: std::time::Instant,
 }
+
+impl PartialEq for Activity {
+    fn eq(&self, other: &Self) -> bool {
+        // A epsilon to account for rounding errors when computing the last activity time
+        // (e.g. when [de]serializing from the database)
+        const ACTIVITY_THRESHOLD: std::time::Duration = std::time::Duration::from_secs(1);
+        self.active == other.active
+            && (self.last_activity - other.last_activity) < ACTIVITY_THRESHOLD
+    }
+}
+
+impl Eq for Activity {}

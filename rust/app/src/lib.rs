@@ -2,6 +2,7 @@
 
 use warp::Filter;
 
+pub mod db;
 pub mod execute;
 pub mod messages;
 

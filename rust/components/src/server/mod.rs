@@ -20,7 +20,7 @@ use crate::{
 // Increments on each server document update
 pub type StateId = u64;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DocumentState {
     state_id: StateId,
     // Document state at ID `state_id`
@@ -51,6 +51,10 @@ impl DocumentState {
 
     pub fn document(&self) -> &str {
         &self.document
+    }
+
+    pub fn text_op(&self) -> &TextOperation {
+        &self.text_op
     }
 
     pub fn cursor_map(&self) -> &CursorMap {
