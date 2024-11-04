@@ -63,11 +63,11 @@ const MAX_UPDATES_PER_MINUTE: usize = 1000;
 /// Maximum cumulative size of documents (in characters) sent per minute.
 /// For reference, 1k lines of code would have at most ~50k characters. It is unlikely a user
 /// will repeatedly copy and delete such large code blocks.
-const MAX_DOC_SIZE_PER_MINUTE: usize = 200000;
+const MAX_DOC_SIZE_PER_MINUTE: usize = 200_000;
 
 /// For reference, 100k characters is about 2k lines of code.
 /// It is unlikely any user will have a program this large.
-const MAX_DOC_CHARS: usize = 100000;
+const MAX_DOC_CHARS: usize = 100_000;
 
 /// Wrapper around a [`Client`] that can be added to a [`Network`]. Used in testing.
 pub struct ClientNetwork {

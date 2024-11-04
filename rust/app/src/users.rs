@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use corust_components::{
     network::{Activity, User, UserId},
     server::ServerError,
@@ -7,8 +9,12 @@ use random_color::{color_dictionary::ColorDictionary, Color, Luminosity, RandomC
 use serde::{Deserialize, Serialize};
 use warp::{path, reject, Filter};
 
-use crate::sessions::SharedSessionMap;
+use crate::{
+    db::{DocumentTable, DocumentTableKey, Table, UserTable, UserTableKey},
+    sessions::{SharedSession, SharedSessionMap},
+};
 
+/// Possible user names to sample from. Common Rust crates and terms.
 const NAMES: [&str; 50] = [
     "Ferris",
     "Serde",
@@ -90,6 +96,15 @@ struct UnexpectedError;
 
 impl reject::Reject for UnexpectedError {}
 
+#[derive(Debug)]
+struct DbError {
+    // The field is used in the custom warp Rejection
+    #[allow(dead_code)]
+    error: String,
+}
+
+impl reject::Reject for DbError {}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserJoinResponse {
     user_id: UserId,
@@ -155,13 +170,88 @@ fn random_color(existing_colors: Vec<&str>) -> String {
     most_different_color
 }
 
+// Groups commands to create new session and add session to the database.
+// If the session already exists in the database then it is retrieved.
+async fn get_or_create_session(
+    session_map: &SharedSessionMap,
+    session_id: &str,
+    db_path: PathBuf,
+) -> Result<SharedSession, warp::Rejection> {
+    let document_table = DocumentTable::new(db_path.clone());
+    let document_key = DocumentTableKey {
+        session_id: session_id.to_string(),
+    };
+    // Query if document exists in the database
+    let document_state = document_table.get_all(session_id).unwrap();
+
+    // The only location a session is created
+    // Load a session from the database if it is present and not already in memory
+    let session = if session_map.get_session(session_id).is_none() && !document_state.is_empty() {
+        log::debug!("Loading session with id {} from database", session_id);
+        // Returned document states should have exactly one state for a given session id
+        debug_assert!(document_state.len() == 1);
+        session_map.get_or_create_session_with_document_state(session_id, document_state[0].clone())
+    } else {
+        log::debug!("Creating a new empty session with id {}", session_id);
+        session_map.get_or_create_session(session_id)
+    };
+    let current_document_state = session
+        .server()
+        .read()
+        .await
+        .current_document_state()
+        .clone();
+    if let Err(e) = document_table.insert_or_update(document_key, current_document_state) {
+        log::error!("Error inserting or updating document: {}", e);
+        return Err(warp::reject::custom(DbError {
+            error: e.to_string(),
+        }));
+    }
+    Ok(session)
+}
+
+// Groups commands to add user to the server and database
+async fn add_user(
+    session: SharedSession,
+    user: User,
+    db_path: PathBuf,
+) -> Result<(), warp::Rejection> {
+    let user_table = UserTable::new(db_path);
+    let user_key = UserTableKey {
+        session_id: session.session_id().to_string(),
+        user_id: user.user_id(),
+    };
+    session
+        .server()
+        .write()
+        .await
+        .add_user(user.clone())
+        .map_err(|err| {
+            log::error!("Error adding user to server: {err:?}");
+            match err {
+                ServerError::DuplicateUserId(user_id) => {
+                    warp::reject::custom(DuplicateUserError { user_id })
+                }
+                _ => warp::reject::custom(UnexpectedError),
+            }
+        })?;
+
+    if let Err(e) = user_table.insert_or_update(user_key, user) {
+        log::error!("Error inserting or updating user: {}", e);
+        return Err(warp::reject::custom(DbError {
+            error: e.to_string(),
+        }));
+    }
+    Ok(())
+}
+
 async fn handle_user_join(
     session_map: SharedSessionMap,
     session_id: String,
     user_id: Option<UserId>,
+    db_path: PathBuf,
 ) -> Result<impl warp::Reply, warp::Rejection> {
-    // The only location a session is created
-    let session = session_map.get_or_create_session(&session_id);
+    let session = get_or_create_session(&session_map, &session_id, db_path.clone()).await?;
     let server = session.server();
     log::debug!("User join request with ID: {:?}", user_id);
     if let Some(user_id) = user_id {
@@ -224,20 +314,14 @@ async fn handle_user_join(
         last_activity: std::time::Instant::now(),
     };
     let user = User::new(user_id, username.to_string(), color, activity);
-    server.write().await.add_user(user).map_err(|err| {
-        log::error!("Error adding user to server: {err:?}");
-        match err {
-            ServerError::DuplicateUserId(user_id) => {
-                warp::reject::custom(DuplicateUserError { user_id })
-            }
-            _ => warp::reject::custom(UnexpectedError),
-        }
-    })?;
+    add_user(session.clone(), user, db_path.clone()).await?;
+
     Ok(warp::reply::json(&UserJoinResponse { user_id }))
 }
 
 pub fn user_join_route(
     session_map: SharedSessionMap,
+    db_path: PathBuf,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     let prefix = path!("join" / String / ..);
     let opt = warp::path::param::<UserId>().map(Some).or_else(|_| async {
@@ -246,6 +330,6 @@ pub fn user_join_route(
     prefix
         .and(opt)
         .and_then(move |session_id: String, user_id: Option<UserId>| {
-            handle_user_join(session_map.clone(), session_id, user_id)
+            handle_user_join(session_map.clone(), session_id, user_id, db_path.clone())
         })
 }

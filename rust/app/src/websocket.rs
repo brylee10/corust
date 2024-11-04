@@ -1,3 +1,4 @@
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use corust_components::network::{UserId, UserList};
@@ -14,8 +15,10 @@ use crate::execute::runner::{
     bcast_notify_output_size_error, container_response_to_runner_output, run_code,
     ws_notify_concurrent_code_error, RunCodeError, RunType, SharedContainerFactory,
 };
-use crate::messages::*;
-use crate::sessions::{SessionId, SharedSession, SharedSessionMap};
+use crate::sessions::{
+    mark_remove_inactive_users, MarkRemoveUsers, SessionId, SharedServer, SharedSession,
+    SharedSessionMap,
+};
 use corust_components::{network::RemoteUpdate, ServerMessage, Snapshot};
 use tokio::sync::broadcast::error::{RecvError, SendError};
 use tokio::time::Duration;
@@ -25,12 +28,7 @@ use warp::{
 };
 
 // Frequency to send pings to each client, in seconds
-const PING_INTERVAL_SEC: u64 = 10;
-// Users which have not responded to pings within this time will be marked as inactive
-const MARK_INACTIVE_USER_SEC: u64 = 15;
-// 30 minutes - This is the period a user claims the same username before being removed
-// Allows users who refresh their page to claim  the same identity
-const REMOVE_INACTIVE_USERS_SEC: u64 = 60 * 30;
+pub const PING_INTERVAL_SEC: u64 = 10;
 // Frequency to check for client inactivity, in seconds
 // Note that inactive user check for each connection will check all users for inactivity
 // If a connection did not end gracefully then the caller itself was unable to remove itself
@@ -38,10 +36,6 @@ const CHECK_INACTIVE_USERS_SEC: u64 = 30;
 // Number of [`ContainerResponse`] messages that can be bufferred from a running container
 // in the channel
 const CONTAINER_RESPONSE_MSG_LIMIT: usize = 8;
-// Maximum size of a resulting document after transformation.
-// In practice, documents are not expected to be this large.
-// This is sufficient for ~2k lines of code.
-// const MAX_DOC_SIZE_CHARS: usize = 50_000;
 
 /// Shared to concurrently listen to and handle different client and server messages
 /// in the core server loop.
@@ -81,6 +75,7 @@ pub(crate) async fn handle_websocket(
     session_id: SessionId,
     user_id: UserId,
     container_factory: SharedContainerFactory,
+    db_path: PathBuf,
 ) {
     // unwrap: session_id is always valid, the user gets or creates a session on join, and the user joins
     // before connecting to the websocket
@@ -117,6 +112,7 @@ pub(crate) async fn handle_websocket(
         user_id,
         session_id,
         Arc::clone(&container_factory),
+        db_path,
     ));
 }
 
@@ -146,6 +142,7 @@ async fn handle_messages(
     user_id: UserId,
     session_id: SessionId,
     container_factory: SharedContainerFactory,
+    db_path: PathBuf,
 ) -> Result<(), WebSocketError> {
     'outer: loop {
         tokio::select! {
@@ -174,11 +171,13 @@ async fn handle_messages(
                 send_ping(Arc::clone(&shared_ws_tx), user_id, session_id.clone(), Arc::clone(&server)).await;
             },
             _ = check_inactive_users.tick() => {
-                if let RemoveUsersRet::RemoveSelf = mark_remove_inactive_users(
+                if let RemoveUsersRet::RemoveSelf = ws_mark_remove_inactive_users(
                         &session_id,
                         Arc::clone(&server),
                         user_id,
-                        Arc::clone(&shared_ws_tx)).await {
+                        Arc::clone(&shared_ws_tx),
+                        db_path.as_path()
+                    ).await {
                     break 'outer;
                 }
             },
@@ -467,11 +466,12 @@ enum RemoveUsersRet {
 // Mark users as inactive if they have not responded to pings within a certain interval.
 // Inactive users will not be broadcast to other clients.
 // If a user is inactive for a long period, remove them permanently from the session.
-async fn mark_remove_inactive_users(
+async fn ws_mark_remove_inactive_users(
     session_id: &SessionId,
     server: SharedServer,
     user_id: UserId,
     ws_tx: SharedWsSender,
+    db_path: &Path,
 ) -> RemoveUsersRet {
     log::debug!("Checking if users in session ID {session_id} are inactive");
 
@@ -480,36 +480,8 @@ async fn mark_remove_inactive_users(
         server.read().await.users()
     );
 
-    let mut users_to_mark = Vec::new();
-    let mut users_to_remove = Vec::new();
-
-    for (id, user) in server.read().await.users() {
-        let user_last_activity = user.activity.last_activity;
-        if user_last_activity.elapsed().as_secs() > MARK_INACTIVE_USER_SEC {
-            log::debug!(
-                "User {user:?} in session ID {session_id} is inactive, marking as inactive"
-            );
-            users_to_mark.push(*id);
-        } else {
-            // Not an error because the user may have gracefully left the session
-        }
-        if user_last_activity.elapsed().as_secs() > REMOVE_INACTIVE_USERS_SEC {
-            log::debug!("User {user:?} in session ID {session_id} has been inactive for {REMOVE_INACTIVE_USERS_SEC} sec, removing");
-            users_to_remove.push(*id);
-        }
-    }
-
-    for user_id in users_to_mark.iter() {
-        // unwrap: user_id is only added to vector if it exists in the user map
-        server.write().await.mark_user_inactive(*user_id).unwrap();
-    }
-
-    // Only users who are inactive for a long period are removed, freeing their username (their user ID is never reused though)
-    for id in users_to_remove.iter() {
-        // unwrap: user_id is only added to vector if it exists in the user map
-        let user = server.write().await.users_mut().remove(id).unwrap();
-        log::debug!("Removing inactive user {user:?} from session ID {session_id}");
-    }
+    let MarkRemoveUsers { users_to_mark, .. } =
+        mark_remove_inactive_users(server, session_id, db_path.to_path_buf()).await;
 
     if users_to_mark.contains(&user_id) {
         // tx close would initiate close handshake with client, but
@@ -562,6 +534,7 @@ async fn send_snapshot(server: SharedServer, ws_tx: &mut SplitSink<WebSocket, Me
 pub fn websocket_route(
     session_map: SharedSessionMap,
     container_factory: SharedContainerFactory,
+    db_path: PathBuf,
 ) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
     warp::path("websocket")
         .and(warp::path::param())
@@ -571,8 +544,16 @@ pub fn websocket_route(
             move |session_id: String, user_id: UserId, ws: warp::ws::Ws| {
                 let session_map = Arc::clone(&session_map);
                 let container_factory = Arc::clone(&container_factory);
+                let db_path = db_path.clone();
                 ws.on_upgrade(move |ws| {
-                    handle_websocket(ws, session_map, session_id, user_id, container_factory)
+                    handle_websocket(
+                        ws,
+                        session_map,
+                        session_id,
+                        user_id,
+                        container_factory,
+                        db_path,
+                    )
                 })
             },
         )

@@ -252,11 +252,11 @@ impl Network {
         // No panic: Exclusive borrow gives exclusive access to the metadata map
         // Must insert component metadata first because `new_client` uses metadata delay
         // to schedule first client snapshot
-        debug_assert!(self
+        let res = self
             .component_metadata
             .borrow_mut()
-            .insert(id, component_metadata)
-            .is_none());
+            .insert(id, component_metadata);
+        debug_assert!(res.is_none());
 
         let kind = component.kind();
         if kind == ComponentKind::Server {
@@ -499,6 +499,9 @@ pub struct LocalMessage {
 
 #[derive(Debug)]
 pub struct ClientConfig {
+    // Used for late joiners. Component is added after `delay` time units.
+    // Simulates a client requesting to join at time `T`, and server processing
+    // the request and the client receiving the most recent snapshot at `T + delay`.
     delay: Delay,
 }
 
@@ -534,16 +537,18 @@ mod test {
     use crate::server::ServerNetwork;
 
     // Test notation:
-    // Ln       - local message number n from a client
-    // O (Si)   - A local message (possibly transformed) broadcast to the server relative to historical server state Si
-    // Ack (Ln) - Client receiving server acknowledgement that server has applied client's operation Ln
-    // S        - server message, received by a client
-    // Snap     - server message, received by a client, special case of snapshot of server state when client joins
-    // Sn       - server state (only applies to the server component), denotes reference server state a client output transformation
-    //            is relative to
-    // C1, Cn   - client 1, client n
-    // ...      - After some time, the listed operations will occur
-    // "s|tr |" - `|` represents the begin and end of a cursor highlight
+    // Ln          - local message number n from a client
+    // O (Si)      - A local message (possibly transformed) broadcast to the server relative to historical server state Si
+    // Ack (Ln)    - Client receiving server acknowledgement that server has applied client's operation Ln
+    // S           - server message, received by a client
+    // Snap        - server message, received by a client, special case of snapshot of server state when client joins
+    // Sn          - server state (only applies to the server component), denotes reference server state a client output transformation
+    //               is relative to
+    // C1, Cn      - client 1, client n
+    // ...         - After some time, the listed operations will occur
+    // "s|tr |"    - `|` represents the begin and end of a cursor highlight
+    // Late Join   - Client joining the network (used for late joiners)
+    // Archive     - Server restores a document state from an archive, or client receives a message from an archive
 
     // Test naming terminology:
     // - single/multi client: Number of clients connected to server (multi client tests collaboration)
@@ -2657,6 +2662,10 @@ mod test {
     }
 
     mod text_tests {
+        use corust_transforms::{ops::CompoundOp, xforms::TextOperation};
+
+        use crate::server::DocumentState;
+
         use super::*;
 
         // Tests designed primarily for text transformation tests.
@@ -3687,6 +3696,15 @@ mod test {
 
         #[test]
         fn test_late_joiner_sync() {
+            // The client adds text, then moves the cursor without changing the text.
+            // Time    | C1                                   | C2                               | Server
+            //---------|--------------------------------------|----------------------------------|------------------------------
+            // 0       | Snap  - ""                           |                                  |
+            // 0       | L1    - "Client 1 is typing!|"       |                                  |
+            // 1       |                                      |                                  | C1 -> "Client 1 is typing!|"
+            // 2       | Ack(L1)                              |                                  |
+            // 5       |                                      | Late Join                        |
+            // 6       |                                      | Snap  - "Client 1 is typing!|"   |
             let mut network = Network::new();
             let server = Box::new(ServerNetwork::new(&mut network));
             let client1 = Box::new(ClientNetwork::new(&mut network));
@@ -3782,6 +3800,99 @@ mod test {
                 network.component(client2_id).unwrap().document(),
                 target_text
             );
+
+            assert!(network.tick().unwrap() == NetworkState::Stopped);
+        }
+
+        #[test]
+        fn test_create_server_with_document() {
+            // Test operations where the server is initialized with a non-empty document.
+            // Time    | C1                                           | Server
+            //---------|----------------------------------------------|---------------------------------------------
+            // 0       | Snap      - ""                               | Archive - "Hello, world!"
+            // 1       | Archive   - "Hello, world!"                  |
+            // 1       | L1        - "Hello, world! I am client 1!"   | C1 -> "Client 1 is typing!|"
+            // 2       |                                              | C1/S1 -> "Hello, world! I am client 1!" (S1)
+            // 3       | Ack(L1)                                      |
+
+            let mut network = Network::new();
+            let compound_op = CompoundOp::Insert {
+                text: "Hello, world!".to_string(),
+            };
+            let text_op = TextOperation::from_ops(std::iter::once(compound_op), None, false);
+            // Select some non-zero starting state ID to simulate a server that has already been running
+            let starting_state_id = 10;
+            let document_state = DocumentState::new(
+                starting_state_id,
+                "Hello, world!".to_string(),
+                text_op,
+                Default::default(),
+            );
+            let server = Box::new(ServerNetwork::new_with_document_state(
+                &mut network,
+                document_state,
+            ));
+            let client1 = Box::new(ClientNetwork::new(&mut network));
+
+            let client1_id = client1.id();
+            let server_id = server.id();
+
+            network
+                .add_component_sod(server, Delay::constant(1))
+                .unwrap();
+            network
+                .add_component_sod(client1, Delay::constant(1))
+                .unwrap();
+
+            let start_text = "Hello, world!";
+            // Cursor: "Hello, world! I am client 1!|"
+            let client1_edit1 = "Hello, world! I am client 1!";
+            let target_text = client1_edit1;
+
+            let client1_event1 = LocalMessage {
+                client_id: client1_id,
+                document: client1_edit1.to_string(),
+                cursor_pos: CursorPos::new(
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
+                    client1_edit1.chars().count(),
+                ),
+            };
+
+            network.schedule_local_message(client1_event1, 1).unwrap();
+
+            // T = 0
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 0);
+            assert_eq!(network.component(server_id).unwrap().document(), start_text);
+            assert_eq!(
+                network.component(client1_id).unwrap().document(),
+                start_text
+            );
+
+            // T = 1, C1 sends L1
+            assert!(network.tick().is_ok());
+            assert_eq!(network.time(), 1);
+            assert_eq!(network.component(server_id).unwrap().document(), start_text);
+            assert_eq!(
+                network.component(client1_id).unwrap().document(),
+                target_text
+            );
+
+            // T = 2, T = 3 (server receives L1, C1 acks L1 no-op)
+            for t in [2, 3] {
+                assert!(network.tick().is_ok());
+                assert_eq!(network.time(), t);
+                assert_eq!(
+                    network.component(server_id).unwrap().document(),
+                    target_text
+                );
+                assert_eq!(
+                    network.component(client1_id).unwrap().document(),
+                    target_text
+                );
+            }
 
             assert!(network.tick().unwrap() == NetworkState::Stopped);
         }

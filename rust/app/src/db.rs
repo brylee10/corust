@@ -192,7 +192,7 @@ impl UserTable {
         }
     }
 
-    pub fn create_connection(&self) -> Result<Connection, DbError> {
+    fn create_connection(&self) -> Result<Connection, DbError> {
         self.base_table.create_connection()
     }
 }

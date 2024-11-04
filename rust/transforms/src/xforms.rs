@@ -110,7 +110,8 @@ impl TextOperation {
 }
 impl TextOperation {
     /// Converts a series of `CompoundOp` operations into a `TextOperation` struct. If `id` is provided, it is used as the id of the operation.
-    /// Otherwise, a new ID is generated. `is_transform` is set by derived operations from the `transform` function.
+    /// Otherwise, a new ID is generated. The ID is used for clients to identify if the `TextOperation` originated from themselves
+    /// such that it isn't applied twice. `is_transform` is set by derived operations from the `transform` function.
     pub fn from_ops<T: Iterator<Item = CompoundOp>>(
         ops: T,
         id: Option<Uuid>,

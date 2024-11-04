@@ -20,6 +20,8 @@ site/coverage
 site/build
 site/.npm
 
+# Local database
+corust.db
 
 # misc
 .DS_Store

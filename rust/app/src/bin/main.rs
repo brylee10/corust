@@ -1,7 +1,9 @@
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::Arc;
 
 use ansi_term::Color;
+use corust_app::db::{DocumentTable, Table, UserTable};
 use dotenv;
 use env_logger::Builder;
 use log::Level;
@@ -9,7 +11,7 @@ use log::Level;
 use std::io::Write;
 use warp::Filter;
 
-use corust_app::sessions::{SessionMap, SharedSessionMap};
+use corust_app::sessions::{spawn_background_session_managers, SessionMap, SharedSessionMap};
 use corust_app::users::user_join_route;
 use corust_app::{root_page, websocket::*};
 use corust_sandbox::container::ContainerFactory;
@@ -47,9 +49,26 @@ async fn main() {
     let session_map: SharedSessionMap = Arc::new(SessionMap::new());
     let container_factory = Arc::new(ContainerFactory::new(MAX_CONCURRENT_CONTAINERS));
 
+    // Initialize database tables
+    let db_path: PathBuf = std::env::var("DB_PATH")
+        .unwrap_or_else(|e| panic!("DB_PATH must be set, {}", e))
+        .into();
+    let document_table = DocumentTable::new(db_path.clone());
+    let user_table = UserTable::new(db_path.clone());
+    // unwrap: server start up should fail if the tables cannot be created
+    document_table.create().unwrap();
+    user_table.create().unwrap();
+
+    // Start a background tasks to archive empty sessions and remove inactive users
+    spawn_background_session_managers(Arc::clone(&session_map), db_path.clone());
+
     // warp::ws() is composed of many filters to handle HTTP -> websocket upgrade
-    let websocket_route = websocket_route(Arc::clone(&session_map), Arc::clone(&container_factory));
-    let user_join_route = user_join_route(Arc::clone(&session_map));
+    let websocket_route = websocket_route(
+        Arc::clone(&session_map),
+        Arc::clone(&container_factory),
+        db_path.clone(),
+    );
+    let user_join_route = user_join_route(Arc::clone(&session_map), db_path);
     let root_page_route = root_page();
 
     let cors_origin = std::env::var("FRONT_END_URI")

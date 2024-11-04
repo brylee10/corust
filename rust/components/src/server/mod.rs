@@ -104,6 +104,21 @@ impl Server {
         }
     }
 
+    /// Creates a new server starting from a given [`DocumentState`]. This is useful for restoring a server from a
+    /// database archive.
+    pub fn new_with_document_state(document_state: DocumentState) -> Self {
+        let mut document_states = FnvHashMap::default();
+        let state_id = document_state.state_id();
+        document_states.insert(state_id, document_state);
+        Server {
+            document_states,
+            current_state_id: state_id,
+            users: FnvHashMap::default(),
+            user_doc_states: FnvHashMap::default(),
+            next_id: 0,
+        }
+    }
+
     // Given a client operation (`client_op`) which the user intended to apply to a given server doc state (`state_id`),
     // transform the client operation to apply to the current server doc state (`current_state_id`). Also given the
     // `user_id` of the user who applied the operation with the `cursor_map` indicating the map of all cursor positions
@@ -332,6 +347,19 @@ impl ServerNetwork {
             id,
         }
     }
+
+    /// Creates a new server starting from a given [`DocumentState`]. This tests code paths used
+    /// for restoring a server from a database archive.
+    pub fn new_with_document_state(network: &mut Network, document_state: DocumentState) -> Self {
+        let id = network.next_id();
+        let network_shared = network.network_shared();
+        ServerNetwork {
+            inner: Server::new_with_document_state(document_state),
+            network_shared,
+            id,
+        }
+    }
+
     /// Sends a transformation ([`TextOperation`]) to all clients on the network
     pub fn broadcast(&mut self, op: TextOperation, cursor_map: CursorMap) {
         let client_ids = self.network_shared.client_ids();
