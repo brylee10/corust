@@ -283,7 +283,7 @@ function App({ userId }: AppProps) {
     // Requires a CodeMirror view for the transaction dispatch to target
     if (view) {
       // Create WebSocket connection.
-      console.log(
+      console.debug(
         "Trying to connect to WS with session ID: ",
         params.sessionId,
         " and user ID: ",
@@ -430,7 +430,7 @@ function App({ userId }: AppProps) {
       newSocket.addEventListener(
         "close",
         function (event) {
-          console.log("Disconnected from WS Server");
+          console.error("Disconnected from WS Server");
           setWsOpen(false);
         },
         { signal }

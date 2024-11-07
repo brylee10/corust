@@ -70,6 +70,7 @@ const MAX_DOC_SIZE_PER_MINUTE: usize = 200_000;
 const MAX_DOC_CHARS: usize = 100_000;
 
 /// Wrapper around a [`Client`] that can be added to a [`Network`]. Used in testing.
+#[derive(Debug)]
 pub struct ClientNetwork {
     inner: Client,
     // Shared network state
@@ -170,6 +171,7 @@ impl From<ClientError> for JsValue {
 }
 
 /// Standalone client with core operations and state for client document management with operational transform.
+#[derive(Debug)]
 #[wasm_bindgen]
 pub struct Client {
     document: String,
@@ -846,10 +848,16 @@ pub struct UserCursorPos {
     cursor_pos: CursorPos,
 }
 
-#[wasm_bindgen]
 impl UserCursorPos {
     pub fn user_id(&self) -> UserId {
         self.user_id
+    }
+}
+
+#[wasm_bindgen]
+impl UserCursorPos {
+    pub fn user_id_string(&self) -> String {
+        self.user_id.to_string()
     }
 
     pub fn cursor_pos(&self) -> CursorPos {
@@ -865,6 +873,7 @@ mod tests {
 
     mod rate_limiter {
         use super::*;
+
         #[test]
         #[should_panic(expected = "DocUpdateLimiter")]
         fn test_client_hit_rate_limit() {

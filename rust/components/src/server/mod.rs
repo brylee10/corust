@@ -6,6 +6,7 @@ use std::ops::{Deref, DerefMut};
 use fnv::FnvHashMap;
 
 use corust_transforms::xforms::{TextOperation, TextOperationError};
+use rand::Rng;
 use thiserror::Error;
 
 use crate::{
@@ -79,7 +80,6 @@ pub struct Server {
     users: FnvHashMap<UserId, User>,
     // Map of user_id to the state_id of the document state the user is at
     user_doc_states: FnvHashMap<UserId, StateId>,
-    next_id: UserId,
 }
 
 impl Server {
@@ -100,7 +100,6 @@ impl Server {
             current_state_id: 0,
             users: FnvHashMap::default(),
             user_doc_states: FnvHashMap::default(),
-            next_id: 0,
         }
     }
 
@@ -115,7 +114,6 @@ impl Server {
             current_state_id: state_id,
             users: FnvHashMap::default(),
             user_doc_states: FnvHashMap::default(),
-            next_id: 0,
         }
     }
 
@@ -274,9 +272,7 @@ impl Server {
 
     /// Returns a unique user id of the next user.
     pub fn next_user_id(&mut self) -> UserId {
-        let next_id = self.next_id;
-        self.next_id += 1;
-        next_id
+        random_u64()
     }
 
     pub fn current_state_id(&self) -> StateId {
@@ -311,6 +307,11 @@ impl Server {
             .cloned()
             .collect()
     }
+}
+
+fn random_u64() -> u64 {
+    // With 10^13 possible user ids, the chance of a collision in 10k user ids is < 1e-5
+    rand::thread_rng().gen::<u64>() % 10u64.pow(13)
 }
 
 #[derive(Debug, Error)]

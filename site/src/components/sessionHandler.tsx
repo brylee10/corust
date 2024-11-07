@@ -17,14 +17,10 @@ function SessionHandler({ children }: SessionHandlerProps) {
 
   useEffect(() => {
     // Only redirect to a stored or new session if on home page, otherwise the user has already specified a session
-    console.log(location.pathname);
+    console.debug(location.pathname);
     if (location.pathname !== "/") return;
-    // let sessionId = localStorage.getItem("sessionId");
 
-    // if (!sessionId) {
     const sessionId = generateSessionId();
-    // localStorage.setItem("sessionId", sessionId);
-    // }
 
     navigate(`/${sessionId}`, { replace: true });
   }, [navigate, location.pathname]);

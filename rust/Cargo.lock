@@ -643,6 +643,7 @@ dependencies = [
  "fnv",
  "getrandom",
  "log",
+ "rand",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

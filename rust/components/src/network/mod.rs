@@ -121,9 +121,12 @@ impl Network {
                     component.remote_update(remote)?;
                 }
                 NetworkMessage::LateJoiner(client_config) => {
-                    let component = Box::new(ClientNetwork::new(self));
                     let late_joiner = true;
-                    self.add_component(component, client_config.delay, late_joiner)?;
+                    self.add_component(
+                        client_config.client_component,
+                        client_config.delay,
+                        late_joiner,
+                    )?;
                 }
                 NetworkMessage::Snapshot(snapshot) => {
                     let dest = snapshot.dest;
@@ -207,9 +210,9 @@ impl Network {
     }
 
     /// Schedule a new client to be added at a given time, simulates a late joiner
-    pub fn schedule_late_joiner(&mut self, clock: Time, client_config: ClientConfig) {
+    pub fn schedule_late_joiner(&mut self, clock: Time, late_joiner: LateJoiner) {
         self.events.borrow_mut().push(Reverse(NetworkEvent {
-            message: NetworkMessage::LateJoiner(client_config),
+            message: NetworkMessage::LateJoiner(late_joiner),
             time: clock,
         }));
     }
@@ -278,7 +281,7 @@ impl Network {
         Ok(())
     }
 
-    /// Get the next available component ID and increment the ID counter.
+    /// Get a new unique component ID.
     pub fn next_id(&mut self) -> ComponentId {
         let next_id = self.next_id;
         self.next_id += 1;
@@ -315,8 +318,13 @@ impl Network {
     pub fn time(&self) -> Time {
         *self.clock.borrow()
     }
+
+    pub fn num_components(&self) -> usize {
+        self.components.len()
+    }
 }
 
+#[derive(Debug)]
 pub struct NetworkShared {
     server_id: Rc<RefCell<Option<ComponentId>>>,
     client_ids: Rc<RefCell<Vec<ComponentId>>>,
@@ -348,6 +356,7 @@ impl NetworkShared {
 }
 
 // Light wrapper around a component. Incorporates delays for scheduling events.
+#[derive(Debug)]
 pub struct ComponentMetadata {
     // Represents the delay from the sender to this component as a receiver.
     // Realistically, this value would be different per message, but for simplicitly this
@@ -465,7 +474,7 @@ pub enum NetworkMessage {
     Local(LocalMessage),
     Remote(RemoteUpdate),
     // Sent only for late joiners. IDs are assigned in increasing order based on creation time.
-    LateJoiner(ClientConfig),
+    LateJoiner(LateJoiner),
     // Server sends snapshot to late joiners
     Snapshot(Snapshot),
 }
@@ -498,7 +507,9 @@ pub struct LocalMessage {
 }
 
 #[derive(Debug)]
-pub struct ClientConfig {
+pub struct LateJoiner {
+    // Client which will join network late
+    client_component: Box<ClientNetwork>,
     // Used for late joiners. Component is added after `delay` time units.
     // Simulates a client requesting to join at time `T`, and server processing
     // the request and the client receiving the most recent snapshot at `T + delay`.
@@ -2676,6 +2687,9 @@ mod test {
             let server = Box::new(ServerNetwork::new(&mut network));
             let client1 = Box::new(ClientNetwork::new(&mut network));
             let client2 = Box::new(ClientNetwork::new(&mut network));
+            let server_id = server.id();
+            let client1_id = client1.id();
+            let client2_id = client2.id();
 
             network
                 .add_component_sod(server, Delay::constant(0))
@@ -2687,9 +2701,9 @@ mod test {
                 .add_component_sod(client2, Delay::constant(0))
                 .unwrap();
 
-            assert_eq!(network.server_id().borrow().unwrap(), 0);
-            assert_eq!(*network.client_ids().borrow(), vec![1, 2]);
-            assert_eq!(network.next_id(), 3);
+            assert_eq!(network.server_id().borrow().unwrap(), server_id);
+            assert_eq!(*network.client_ids().borrow(), vec![client1_id, client2_id]);
+            assert_eq!(network.num_components(), 3);
         }
 
         #[test]
@@ -3708,10 +3722,11 @@ mod test {
             let mut network = Network::new();
             let server = Box::new(ServerNetwork::new(&mut network));
             let client1 = Box::new(ClientNetwork::new(&mut network));
+            let client2 = Box::new(ClientNetwork::new(&mut network));
 
-            let client2_id = 2;
-            let client1_id = client1.id();
             let server_id = server.id();
+            let client1_id = client1.id();
+            let client2_id = client2.id();
 
             network
                 .add_component_sod(server, Delay::constant(1))
@@ -3739,7 +3754,8 @@ mod test {
             network.schedule_local_message(client1_event1, 0).unwrap();
             network.schedule_late_joiner(
                 5,
-                ClientConfig {
+                LateJoiner {
+                    client_component: client2,
                     delay: Delay::constant(1),
                 },
             );
@@ -3753,6 +3769,7 @@ mod test {
                 client1_edit1
             );
             assert!(network.component(client2_id).is_none());
+            assert_eq!(network.num_components(), 2);
 
             // T = 1, T = 2 (C1 acks L1, no-op)
             for t in [1, 2] {
@@ -3767,6 +3784,7 @@ mod test {
                     target_text
                 );
                 assert!(network.component(client2_id).is_none());
+                assert_eq!(network.num_components(), 2);
             }
 
             // T = 5, client2 is created but the document is empty
@@ -3784,6 +3802,7 @@ mod test {
                 network.component(client2_id).unwrap().document(),
                 start_text
             );
+            assert_eq!(network.num_components(), 3);
 
             // T = 6, client2 receives the server state
             assert!(network.tick().is_ok());

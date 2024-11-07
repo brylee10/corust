@@ -92,7 +92,7 @@ const updateRunStatus = (
       runStatus = { ...runStatus, stdoutErrTooLarge: true };
       break;
   }
-  console.log("Updated run status", runStatus, runType, runStateUpdate);
+  console.debug("Updated run status", runStatus, runType, runStateUpdate);
   return runStatus;
 };
 
@@ -123,7 +123,7 @@ function RunOutputDisplay({ runOutput, runStatus }: RunOutputProps) {
 
   useEffect(() => {
     if (runOutput) {
-      console.log("Run Output: " + JSON.stringify(runOutput));
+      console.debug("Run Output: " + JSON.stringify(runOutput));
       setStderr(runOutput.stderr);
       setStdout(runOutput.stdout);
     }

@@ -254,18 +254,24 @@ async fn handle_user_join(
     let session = get_or_create_session(&session_map, &session_id, db_path.clone()).await?;
     let server = session.server();
     log::debug!("User join request with ID: {:?}", user_id);
-    if let Some(user_id) = user_id {
-        // Will try to rejoin with the same user_id
-        // If not present, then will join with a new user_id
-        if let Some(user) = server.write().await.users_mut().get_mut(&user_id) {
-            user.activity.active = true;
-            user.activity.last_activity = std::time::Instant::now();
-            log::debug!("User rejoining with ID: {:?}", user_id);
-            return Ok(warp::reply::json(&UserJoinResponse { user_id }));
+    let user_id = match user_id {
+        Some(user_id) => {
+            // Will try to rejoin with the same user_id
+            if let Some(user) = server.write().await.users_mut().get_mut(&user_id) {
+                user.activity.active = true;
+                user.activity.last_activity = std::time::Instant::now();
+                log::debug!("User rejoining with ID: {:?}", user_id);
+                return Ok(warp::reply::json(&UserJoinResponse { user_id }));
+            }
+            // If not present, then will join with a new user_id
+            server.write().await.next_user_id()
         }
-    }
-
-    let user_id = server.write().await.next_user_id();
+        None => {
+            // If not present, then will join with a new user_id
+            server.write().await.next_user_id()
+        }
+    };
+    log::debug!("User join with new ID: {:?}", user_id);
 
     let num_users = server.read().await.users().len();
     let possible_names: Vec<String> = if num_users < NAMES.len() {

@@ -26,7 +26,7 @@ function UserJoin() {
         );
         let fetchUri;
         if (userId) {
-          console.debug("User id found in local storage: ", userId);
+          console.debug("User id found in session storage: ", userId);
           fetchUri = `${process.env.REACT_APP_ENDPOINT_URI}/join/${params.sessionId}/${userId}`;
         } else {
           fetchUri = `${process.env.REACT_APP_ENDPOINT_URI}/join/${params.sessionId}`;
