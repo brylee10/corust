@@ -1,39 +1,61 @@
 import React, { useCallback } from "react";
-import { Button, Tooltip, styled } from "@mui/material";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+
 import { RunStatus, RunState } from "../runOutputDisplay.tsx";
 import { CargoCommand } from "../../App.tsx";
 
-const CustomButton = styled(Button)({
+import { Button, ButtonGroup, Tooltip, styled } from "@mui/material";
+import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+
+const CustomRunButton = styled(Button)({
   padding: "10px 20px",
-  // Rust!
-  backgroundColor: "#CE412B",
   color: "white",
   border: "none",
-  borderRadius: "5px",
+  borderRadius: "5px 0px 0px 5px",
   cursor: "pointer",
   fontWeight: "bold",
   lineHeight: "1.25",
   height: 38,
   alignSelf: "center",
-  "&:hover": {
-    backgroundColor: "#CE412B",
-  },
 });
 
-const DisabledButton = styled(Button)({
+const CustomSelectButton = styled(Button)({
+  minWidth: "32px",
+  color: "black",
+  border: "none",
+  borderRadius: "0px 5px 5px 0px",
+  cursor: "pointer",
+  height: 38,
+  alignSelf: "center",
+});
+
+const DisabledRunButton = styled(Button)({
   padding: "10px 20px",
-  backgroundColor: "gray",
+  backgroundColor: "#A3A3A3",
   color: "white",
   border: "none",
   // Do not show a cursor helper
   cursor: "default",
-  borderRadius: "5px",
+  borderRadius: "5px 0px 0px 5px",
   fontWeight: "bold",
   lineHeight: "1.25",
   alignSelf: "center",
   "&:hover": {
-    backgroundColor: "gray",
+    backgroundColor: "#A3A3A3",
+  },
+});
+
+const DisabledSelectButton = styled(Button)({
+  minWidth: "32px",
+  backgroundColor: "#CECECE",
+  color: "white",
+  border: "none",
+  borderRadius: "0px 5px 5px 0px",
+  cursor: "pointer",
+  height: 38,
+  alignSelf: "center",
+  "&:hover": {
+    backgroundColor: "#CECECE",
   },
 });
 
@@ -52,10 +74,15 @@ function RunButton({
   cargoCommand,
 }: RunButtonProps) {
   const renderRunButton = useCallback(() => {
-    const buttonText = cargoCommand === CargoCommand.Build ? "BUILD" : "RUN";
+    const buttonTextMap = {
+      [CargoCommand.Build]: "BUILD",
+      [CargoCommand.Run]: "RUN",
+      [CargoCommand.Test]: "TEST",
+    };
+    const buttonText = buttonTextMap[cargoCommand];
     const enabledButton = (
-      <>
-        <CustomButton
+      <ButtonGroup>
+        <CustomRunButton
           variant="contained"
           size="small"
           onClick={() => {
@@ -65,19 +92,27 @@ function RunButton({
           endIcon={<PlayArrowIcon />}
         >
           {buttonText}
-        </CustomButton>
-      </>
+        </CustomRunButton>
+        <CustomSelectButton variant="contained" size="small" color="secondary">
+          <MoreHorizIcon />
+        </CustomSelectButton>
+      </ButtonGroup>
     );
 
     const disabledButton = (
       <Tooltip title="Code executing, cannot start simultaneous run.">
-        <DisabledButton
-          variant="contained"
-          size="small"
-          endIcon={<PlayArrowIcon />}
-        >
-          {buttonText}
-        </DisabledButton>
+        <ButtonGroup>
+          <DisabledRunButton
+            variant="contained"
+            size="small"
+            endIcon={<PlayArrowIcon />}
+          >
+            {buttonText}
+          </DisabledRunButton>
+          <DisabledSelectButton variant="contained" size="small">
+            <MoreHorizIcon />
+          </DisabledSelectButton>
+        </ButtonGroup>
       </Tooltip>
     );
     return runStatus?.runState !== RunState.Running

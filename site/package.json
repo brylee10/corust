@@ -13,11 +13,14 @@
     "@testing-library/react": "^13.4.0",
     "@testing-library/user-event": "^13.5.0",
     "@uiw/react-codemirror": "^4.21.25",
+    "@webassemblyjs/ast": "^1.14.1",
+    "@webassemblyjs/wasm-edit": "^1.14.1",
+    "@webassemblyjs/wasm-parser": "^1.14.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
+    "react-resizable-panels": "^2.1.6",
     "react-router-dom": "^6.22.3",
     "react-scripts": "^5.0.1",
-    "reconnecting-websocket": "^4.4.0",
     "web-vitals": "^2.1.4"
   },
   "scripts": {

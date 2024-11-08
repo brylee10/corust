@@ -5,6 +5,7 @@ import reportWebVitals from "./reportWebVitals.js";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { SessionHandler } from "./components/sessionHandler.tsx";
 import UserJoin from "./components/userJoin.tsx";
+import { createTheme, ThemeProvider } from "@mui/material";
 
 // Do not log INFO or DEBUG messages in production
 if (process.env.REACT_APP_ENVIRONMENT?.toLowerCase() === "production") {
@@ -15,16 +16,30 @@ if (process.env.REACT_APP_ENVIRONMENT?.toLowerCase() === "production") {
 // `root` is always present in `index.html`
 const element = document.getElementById("root") as HTMLElement;
 
+const theme = createTheme({
+  palette: {
+    primary: {
+      // Rust!
+      main: "#CE412B",
+    },
+    secondary: {
+      main: "#F5EEE3",
+    },
+  },
+});
+
 const root = ReactDOM.createRoot(element);
 root.render(
   <React.StrictMode>
-    <BrowserRouter>
-      <SessionHandler>
-        <Routes>
-          <Route path="/:sessionId" element={<UserJoin />} />
-        </Routes>
-      </SessionHandler>
-    </BrowserRouter>
+    <ThemeProvider theme={theme}>
+      <BrowserRouter>
+        <SessionHandler>
+          <Routes>
+            <Route path="/:sessionId" element={<UserJoin />} />
+          </Routes>
+        </SessionHandler>
+      </BrowserRouter>
+    </ThemeProvider>
   </React.StrictMode>
 );
 

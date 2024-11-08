@@ -1,7 +1,15 @@
 import { UserInner } from "corust-components";
 import React, { useCallback } from "react";
 import UserIconList from "./userIconList";
-import { Alert, Button, Grow, Snackbar, Tooltip, styled } from "@mui/material";
+import {
+  Alert,
+  Button,
+  Grow,
+  Snackbar,
+  Stack,
+  Tooltip,
+  styled,
+} from "@mui/material";
 import PeopleIcon from "@mui/icons-material/People";
 
 // Define constants once
@@ -23,11 +31,17 @@ const CustomButton = styled(Button)({
 
 interface HeaderBarProps {
   RunButton: React.ReactNode;
+  RunConfigButtons: React.ReactNode;
   userArr: UserInner[];
   selfUserId: bigint;
 }
 
-function HeaderBar({ RunButton, userArr, selfUserId }: HeaderBarProps) {
+function HeaderBar({
+  RunButton,
+  RunConfigButtons,
+  userArr,
+  selfUserId,
+}: HeaderBarProps) {
   const [openCopyNotification, setOpenCopyNotification] = React.useState(false);
 
   const copyCorustLink = useCallback(() => {
@@ -38,8 +52,11 @@ function HeaderBar({ RunButton, userArr, selfUserId }: HeaderBarProps) {
   return (
     <>
       <div className="header-bar">
-        {RunButton}
-        <div className="header-left">
+        <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+          {RunButton}
+          {RunConfigButtons}
+        </Stack>
+        <div className="header-right">
           <UserIconList userArr={userArr} selfUserId={selfUserId} />
           <Tooltip title="Copy Corust Link">
             <CustomButton onClick={copyCorustLink} startIcon={<PeopleIcon />}>

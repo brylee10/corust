@@ -43,6 +43,8 @@ interface RunStatus {
 interface RunOutputProps {
   runOutput: RunOutput | null;
   runStatus: RunStatus | null;
+  open: boolean;
+  setOpen: (open: boolean) => void;
 }
 
 enum RunState {
@@ -96,10 +98,14 @@ const updateRunStatus = (
   return runStatus;
 };
 
-function RunOutputDisplay({ runOutput, runStatus }: RunOutputProps) {
+function RunOutputDisplay({
+  runOutput,
+  runStatus,
+  open,
+  setOpen,
+}: RunOutputProps) {
   const [stderr, setStderr] = useState<string>("");
   const [stdout, setStdout] = useState<string>("");
-  const [open, setOpen] = useState<boolean>(true);
   // Alerts user a compilation was rejected because another compilation was in progress
   const [showConcurrentCompError, setShowConcurrentCompError] =
     useState<boolean>(false);
@@ -131,18 +137,27 @@ function RunOutputDisplay({ runOutput, runStatus }: RunOutputProps) {
 
   const closeOutput = useCallback(() => {
     setOpen(false);
-  }, []);
+  }, [setOpen]);
 
   const openOutput = useCallback(() => {
     setOpen(true);
-  }, []);
+  }, [setOpen]);
 
   // <pre> preserves the error whitespacing
   const renderOpenedOutput = useCallback(() => {
     return (
       <div className="runner-output open">
         <div className="container">
-          <div className="title">OUTPUT</div>
+          <div className="title-container">
+            <div className="title-open">OUTPUT</div>
+            <div className="close">
+              <Tooltip title="Close Output">
+                <IconButton onClick={closeOutput}>
+                  <CloseIcon />
+                </IconButton>
+              </Tooltip>
+            </div>
+          </div>
           {showRunningIcon && (
             <div className="body">
               <div className="subtitle">Progress</div>
@@ -162,13 +177,6 @@ function RunOutputDisplay({ runOutput, runStatus }: RunOutputProps) {
             </div>
           </div>
         </div>
-        <div className="close">
-          <Tooltip title="Close Output">
-            <IconButton onClick={closeOutput}>
-              <CloseIcon />
-            </IconButton>
-          </Tooltip>
-        </div>
       </div>
     );
   }, [stderr, stdout, closeOutput, showRunningIcon]);
@@ -178,7 +186,7 @@ function RunOutputDisplay({ runOutput, runStatus }: RunOutputProps) {
       <div className="runner-output closed">
         <div className="container">
           <Tooltip title="Open Output">
-            <div className="title" onClick={openOutput}>
+            <div className="title-closed" onClick={openOutput}>
               OUTPUT
             </div>
           </Tooltip>

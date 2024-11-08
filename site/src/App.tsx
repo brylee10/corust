@@ -46,6 +46,9 @@ import {
 } from "./components/runOutputDisplay.tsx";
 import HeaderBar from "./components/headerBar/headerBar.tsx";
 import RunButton from "./components/headerBar/runButton.tsx";
+import RunConfigButtons from "./components/headerBar/runConfigButtons.tsx";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
+import { size } from "lodash";
 
 // Interfaces/Type definitions
 
@@ -74,7 +77,6 @@ enum CargoCommand {
   Build = "Build",
   Run = "Run",
   Test = "Test",
-  Clippy = "Clippy",
 }
 
 // Document update, without metadata. These fields are sent to the server.
@@ -188,6 +190,7 @@ function App({ userId }: AppProps) {
   const [runOutput, setRunOutput] = useState<RunOutput | null>(null);
   const [runStatus, setRunStatus] = useState<RunStatus | null>(null);
   const [showCargoOutput, setShowCargoOutput] = useState<boolean>(false);
+  const [cargoOutputOpen, setCargoOutputOpen] = useState<boolean>(true);
   const [codeContainerText, setCodeContainerText] = useState<CodeContainerText>(
     {
       code: "",
@@ -196,10 +199,14 @@ function App({ userId }: AppProps) {
   const [collabSelections, setCollabSelections] = useState<
     UserSelectionRange[]
   >([]);
+
+  // `cargo` configuraiton
   const [targetType, setTargetType] = useState<TargetType>(TargetType.Library);
   const [cargoCommand, setCargoCommand] = useState<CargoCommand>(
     CargoCommand.Build
   );
+  const [rustVersion, setRustVersion] = useState<string>("1.82.0");
+
   const [userArr, setUserArr] = useState<UserInner[]>([]);
   const [wsOpen, setWsOpen] = useState<boolean>(true);
   const [wsDisconnectMsg, setWsDisconnectMsg] = useState<String>(
@@ -874,6 +881,63 @@ function App({ userId }: AppProps) {
     textHighlightDecoration,
   ]);
 
+  const renderCargoOutput = useCallback(() => {
+    // If the output is sized to >= `MIN_CARGO_OUTPUT_SIZE` (ranges 0-100 of container size), output is hidden
+    const MIN_CARGO_OUTPUT_SIZE = 11;
+
+    const conditionalCloseOutput = (size: number) => {
+      console.log("Size: ", size);
+      if (size < MIN_CARGO_OUTPUT_SIZE) {
+        setCargoOutputOpen(false);
+      }
+    };
+
+    if (showCargoOutput) {
+      if (cargoOutputOpen) {
+        const cargoOutput = (
+          <>
+            <PanelResizeHandle className="resize-handle" />
+            <Panel
+              className="max-height"
+              collapsible={true}
+              minSize={10}
+              onCollapse={() => setCargoOutputOpen(false)}
+              id={"2"}
+            >
+              <RunOutputDisplay
+                runOutput={runOutput}
+                runStatus={runStatus}
+                open={cargoOutputOpen}
+                setOpen={setCargoOutputOpen}
+              />
+            </Panel>
+          </>
+        );
+        return cargoOutput;
+      } else {
+        // If output is closed, resize handle not needed
+        const cargoOutput = (
+          <RunOutputDisplay
+            runOutput={runOutput}
+            runStatus={runStatus}
+            open={cargoOutputOpen}
+            setOpen={setCargoOutputOpen}
+          />
+        );
+        return cargoOutput;
+      }
+    } else {
+      return null;
+    }
+  }, [
+    setCargoOutputOpen,
+    showCargoOutput,
+    cargoOutputOpen,
+    runOutput,
+    runStatus,
+  ]);
+
+  // On resizable panels: https://react-resizable-panels.vercel.app/
   return (
     <div className="App">
       <HeaderBar
@@ -883,21 +947,24 @@ function App({ userId }: AppProps) {
           executeCode,
           cargoCommand,
         })}
+        RunConfigButtons={RunConfigButtons({ rustVersion })}
         userArr={userArr}
         selfUserId={client.user_id()}
       />
-      <CodeMirror
-        className="editor"
-        height="100%"
-        extensions={[rust(), extraCursorsPlugin]}
-        onUpdate={handleEditorChange}
-        onCreateEditor={(view, state) => {
-          setView(view);
-        }}
-      />
-      {showCargoOutput ? (
-        <RunOutputDisplay runOutput={runOutput} runStatus={runStatus} />
-      ) : null}
+      <PanelGroup direction="vertical" className="max-height">
+        <Panel className="max-height" minSize={10} id={"1"}>
+          <CodeMirror
+            className="editor"
+            height="100%"
+            extensions={[rust(), extraCursorsPlugin]}
+            onUpdate={handleEditorChange}
+            onCreateEditor={(view, state) => {
+              setView(view);
+            }}
+          />
+        </Panel>
+        {renderCargoOutput()}
+      </PanelGroup>
       <Snackbar
         open={!wsOpen}
         TransitionComponent={Grow}

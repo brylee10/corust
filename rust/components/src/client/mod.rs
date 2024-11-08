@@ -848,16 +848,10 @@ pub struct UserCursorPos {
     cursor_pos: CursorPos,
 }
 
+#[wasm_bindgen]
 impl UserCursorPos {
     pub fn user_id(&self) -> UserId {
         self.user_id
-    }
-}
-
-#[wasm_bindgen]
-impl UserCursorPos {
-    pub fn user_id_string(&self) -> String {
-        self.user_id.to_string()
     }
 
     pub fn cursor_pos(&self) -> CursorPos {

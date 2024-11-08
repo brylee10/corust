@@ -4,7 +4,7 @@
 //! [`SharedServer`] which is a [`Server`] which manages user states and
 //! historical document states for the session.
 
-use std::{path::PathBuf, sync::Arc};
+use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use corust_components::{
     network::UserId,
@@ -172,8 +172,8 @@ impl Session {
 }
 
 pub struct MarkRemoveUsers {
-    pub users_to_mark: Vec<UserId>,
-    pub users_to_remove: Vec<UserId>,
+    pub users_to_mark: HashSet<UserId>,
+    pub users_to_remove: HashSet<UserId>,
 }
 
 /// Marks users as inactive if they have not responded to pings within a certain time.
@@ -183,8 +183,8 @@ pub(crate) async fn mark_remove_inactive_users(
     session_id: &str,
     db_path: PathBuf,
 ) -> MarkRemoveUsers {
-    let mut users_to_mark = Vec::new();
-    let mut users_to_remove = Vec::new();
+    let mut users_to_mark = HashSet::new();
+    let mut users_to_remove = HashSet::new();
 
     for (id, user) in server.read().await.users() {
         let user_last_activity = user.activity.last_activity;
@@ -192,18 +192,13 @@ pub(crate) async fn mark_remove_inactive_users(
             log::debug!(
                 "User {user:?} in session ID {session_id} is inactive, marking as inactive"
             );
-            users_to_mark.push(*id);
+            users_to_mark.insert(*id);
         } else {
             // Not an error because the user may have gracefully left the session
         }
         if user_last_activity.elapsed().as_secs() > REMOVE_INACTIVE_USERS_SEC {
             log::debug!("User {user:?} in session ID {session_id} has been inactive for {REMOVE_INACTIVE_USERS_SEC} sec, removing");
-            users_to_remove.push(*id);
-        }
-
-        if user_last_activity.elapsed().as_secs() > REMOVE_INACTIVE_USERS_SEC {
-            log::debug!("User {user:?} in session ID {session_id} has been inactive for {REMOVE_INACTIVE_USERS_SEC} sec, removing");
-            users_to_remove.push(*id);
+            users_to_remove.insert(*id);
         }
     }
 

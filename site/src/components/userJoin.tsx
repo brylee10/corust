@@ -74,7 +74,11 @@ function UserJoin() {
 
   // Explicitly check for equivalence to `undefined` otherwise `userId = 0` is falsey as well
   // one of the few times React StrictMode hid a bug!
-  return userId !== undefined ? <App userId={userId} /> : <div>Loading...</div>;
+  return userId !== undefined ? (
+    <App userId={userId} />
+  ) : (
+    <div>Failed to connect to server</div>
+  );
 }
 
 export default UserJoin;
