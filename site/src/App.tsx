@@ -1,25 +1,13 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import "./App.css"; // Ensure to import the CSS file
-import CodeMirror, {
+import {
   ViewUpdate,
-  Decoration,
-  ViewPlugin,
-  WidgetType,
   EditorView,
-  Range,
-  DecorationSet,
   ChangeSpec,
   TransactionSpec,
   AnnotationType,
   ChangeSet,
 } from "@uiw/react-codemirror";
-import { rust } from "@codemirror/lang-rust";
 import {
   OpState,
   TextUpdateRange,
@@ -34,13 +22,11 @@ import {
   Client,
 } from "corust-components/corust_components.js";
 import { useParams } from "react-router-dom";
-import { Alert, Snackbar, Grow, Tooltip } from "@mui/material";
-import PlayArrowIcon from "@mui/icons-material/PlayArrow";
+import { Alert, Snackbar, Grow } from "@mui/material";
 import {
   RunOutputDisplay,
   RunOutput,
   RunStatus,
-  RunState,
   updateRunStatus,
   ServerRunStatus,
 } from "./components/runOutputDisplay.tsx";
@@ -48,7 +34,6 @@ import HeaderBar from "./components/headerBar/headerBar.tsx";
 import RunButton from "./components/headerBar/runButton.tsx";
 import RunConfigButtons from "./components/headerBar/runConfigButtons.tsx";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import { size } from "lodash";
 import Editor from "./components/editor/editor.tsx";
 
 // Interfaces/Type definitions
@@ -643,9 +628,9 @@ function App({ userId }: AppProps) {
       if (cargoOutputOpen) {
         const cargoOutput = (
           <>
-            <PanelResizeHandle className="resize-handle" />
+            <PanelResizeHandle className="resize-handle-vert" />
             <Panel
-              className="max-height"
+              className="max-height-vert"
               collapsible={true}
               minSize={10}
               onCollapse={() => setCargoOutputOpen(false)}
@@ -702,7 +687,7 @@ function App({ userId }: AppProps) {
         userArr={userArr}
         selfUserId={client.user_id()}
       />
-      <PanelGroup direction="vertical" className="max-height">
+      <PanelGroup direction="horizontal" className="max-height">
         <Panel className="max-height" minSize={10} id={"1"}>
           <Editor
             setView={setView}

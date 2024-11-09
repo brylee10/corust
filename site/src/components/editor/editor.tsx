@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import "../../App.css"; // Ensure to import the CSS file
 import CodeMirror, {
   ViewUpdate,
@@ -16,6 +16,38 @@ import {
   SelectionRange,
   UserSelectionRange,
 } from "../../App.tsx";
+import { Button, Stack, styled } from "@mui/material";
+
+interface CodeSelectorProps {
+  selected: boolean;
+}
+
+const CodeSelector = styled(Button)<CodeSelectorProps>(
+  ({ theme, selected }) => {
+    const backgroundColor = selected ? "#FAECD8" : "#DCDCDC";
+    const hoverBackgroundColor = selected
+      ? theme.palette.secondary.dark
+      : "#A7A7A7";
+    const fontWeight = selected ? "bold" : "normal";
+    return {
+      backgroundColor,
+      color: "black",
+      border: "none",
+      cursor: "pointer",
+      fontWeight,
+      height: 20,
+      alignSelf: "center",
+      "&:hover": {
+        backgroundColor: hoverBackgroundColor,
+      },
+    };
+  }
+);
+
+enum CodeSelectorType {
+  Live = "Live",
+  RecentRun = "Recent Run",
+}
 
 interface UserSelectionRangeColor {
   userSelectionRange: UserSelectionRange;
@@ -37,6 +69,10 @@ function Editor({
   userArr,
   collabSelections,
 }: EditorProps) {
+  const [codeSelector, setCodeSelector] = useState<CodeSelectorType>(
+    CodeSelectorType.Live
+  );
+
   const isSelectionFocused = useCallback(
     (sel: SelectionRange): sel is SelectionFocused => {
       return (
@@ -264,16 +300,77 @@ function Editor({
     textHighlightDecoration,
   ]);
 
+  const renderCodeSelectorButtons = useCallback(() => {
+    if (codeSelector === CodeSelectorType.Live) {
+      return (
+        <>
+          <CodeSelector
+            selected={true}
+            onClick={() => setCodeSelector(CodeSelectorType.Live)}
+            sx={{
+              borderRadius: "0px",
+              borderBottomLeftRadius: "5px",
+            }}
+          >
+            Live
+          </CodeSelector>
+          <CodeSelector
+            selected={false}
+            onClick={() => setCodeSelector(CodeSelectorType.RecentRun)}
+            sx={{
+              borderRadius: "0px",
+              borderBottomRightRadius: "5px",
+            }}
+          >
+            Recent Run
+          </CodeSelector>
+        </>
+      );
+    } else {
+      return (
+        <>
+          <CodeSelector
+            selected={false}
+            onClick={() => setCodeSelector(CodeSelectorType.Live)}
+            sx={{
+              borderRadius: "0px",
+              borderBottomLeftRadius: "5px",
+            }}
+          >
+            Live
+          </CodeSelector>
+          <CodeSelector
+            selected={true}
+            onClick={() => setCodeSelector(CodeSelectorType.RecentRun)}
+            sx={{
+              borderRadius: "0px",
+              borderBottomRightRadius: "5px",
+            }}
+          >
+            Recent Run
+          </CodeSelector>
+        </>
+      );
+    }
+  }, [codeSelector]);
+
   return (
-    <CodeMirror
-      className="editor"
-      height="100%"
-      extensions={[rust(), extraCursorsPlugin]}
-      onUpdate={handleEditorChange}
-      onCreateEditor={(view, state) => {
-        setView(view);
-      }}
-    />
+    <Stack direction="column" sx={{ width: "100%", height: "100%", pb: 100 }}>
+      <CodeMirror
+        className="editor"
+        height="100%"
+        extensions={[rust(), extraCursorsPlugin]}
+        onUpdate={handleEditorChange}
+        onCreateEditor={(view, state) => {
+          setView(view);
+        }}
+        style={{
+          borderRadius: "5px",
+          borderBottomLeftRadius: "0px",
+        }}
+      />
+      <Stack direction="row">{renderCodeSelectorButtons()}</Stack>
+    </Stack>
   );
 }
 

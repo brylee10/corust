@@ -154,28 +154,30 @@ function RunButton({
   const renderRunButton = useCallback(() => {
     const buttonText = buttonTextMap[cargoCommand];
     const enabledButton = (
-      <ButtonGroup>
-        <CustomRunButton
-          variant="contained"
-          size="small"
-          onClick={() => {
-            setShowCargoOutput(true);
-            executeCode();
-          }}
-          endIcon={<PlayArrowIcon />}
-        >
-          {buttonText}
-        </CustomRunButton>
-        <Tooltip title="Select Cargo Command">
-          <CustomSelectButton
+      <>
+        <ButtonGroup>
+          <CustomRunButton
             variant="contained"
             size="small"
-            color="secondary"
-            onClick={handleCargoCommandPopoverOpen}
+            onClick={() => {
+              setShowCargoOutput(true);
+              executeCode();
+            }}
+            endIcon={<PlayArrowIcon />}
           >
-            <MoreHorizIcon />
-          </CustomSelectButton>
-        </Tooltip>
+            {buttonText}
+          </CustomRunButton>
+          <Tooltip title="Select Cargo Command">
+            <CustomSelectButton
+              variant="contained"
+              size="small"
+              color="secondary"
+              onClick={handleCargoCommandPopoverOpen}
+            >
+              <MoreHorizIcon />
+            </CustomSelectButton>
+          </Tooltip>
+        </ButtonGroup>
         <StyledPopover
           id={"cargo-command-popover"}
           open={cargoCommandPopoverOpen}
@@ -213,7 +215,7 @@ function RunButton({
             />
           </Stack>
         </StyledPopover>
-      </ButtonGroup>
+      </>
     );
 
     const disabledButton = (

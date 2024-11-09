@@ -20,10 +20,13 @@ const theme = createTheme({
   palette: {
     primary: {
       // Rust!
+      light: "#C96556",
       main: "#CE412B",
+      dark: "#902D1E",
     },
     secondary: {
       main: "#F5EEE3",
+      dark: "#ECDDC6",
     },
   },
   // Default 8px spacing

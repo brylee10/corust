@@ -4,11 +4,9 @@ import {
   ButtonGroup,
   Tooltip,
   styled,
-  Switch,
   Stack,
   Typography,
   Popover,
-  Fade,
   Grow,
 } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
@@ -172,7 +170,6 @@ function RunConfigButtons({
   betaVersion,
   nightlyVersion,
 }: RunConfigButtonsProps) {
-  const [liveMode, setLiveMode] = useState(true);
   // Optimization level
   const [optAnchor, setOptAnchor] = React.useState<HTMLButtonElement | null>(
     null
@@ -271,23 +268,6 @@ function RunConfigButtons({
             {optLevel}
           </ConfigButton>
         </Tooltip>
-        <StyledPopover
-          id={"optimization-popover"}
-          open={optPopoverOpen}
-          anchorEl={optAnchor}
-          onClose={handleOptPopoverClose}
-        >
-          <Stack direction={"column"}>
-            <OptButton
-              level={OptimizationLevel.Release}
-              description="Build with optimizations."
-            />
-            <OptButton
-              level={OptimizationLevel.Debug}
-              description="Build with debug information, without optimizations."
-            />
-          </Stack>
-        </StyledPopover>
         <Tooltip title={`Rust ${channel} Channel Version ${channelVersion}`}>
           <ConfigButton
             variant="contained"
@@ -299,36 +279,48 @@ function RunConfigButtons({
             {channel}
           </ConfigButton>
         </Tooltip>
-        <StyledPopover
-          id={"channel-popover"}
-          open={channelPopoverOpen}
-          anchorEl={channelAnchor}
-          onClose={handleChannelPopoverClose}
-        >
-          <Stack direction={"column"}>
-            <ChannelButton
-              channel={RustChannel.Stable}
-              version={stableVersion}
-              description={`Stable version ${stableVersion}`}
-            />
-            <ChannelButton
-              channel={RustChannel.Beta}
-              version={betaVersion}
-              description={`Beta version ${betaVersion}`}
-            />
-            <ChannelButton
-              channel={RustChannel.Nightly}
-              version={nightlyVersion}
-              description={`Nightly version ${nightlyVersion}`}
-            />
-          </Stack>
-        </StyledPopover>
       </ButtonGroup>
-      <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-        <Typography>Recent Run</Typography>
-        <Switch checked={liveMode} onChange={() => setLiveMode(!liveMode)} />
-        <Typography>Live</Typography>
-      </Stack>
+      <StyledPopover
+        id={"optimization-popover"}
+        open={optPopoverOpen}
+        anchorEl={optAnchor}
+        onClose={handleOptPopoverClose}
+      >
+        <Stack direction={"column"}>
+          <OptButton
+            level={OptimizationLevel.Release}
+            description="Build with optimizations."
+          />
+          <OptButton
+            level={OptimizationLevel.Debug}
+            description="Build with debug information, without optimizations."
+          />
+        </Stack>
+      </StyledPopover>
+      <StyledPopover
+        id={"channel-popover"}
+        open={channelPopoverOpen}
+        anchorEl={channelAnchor}
+        onClose={handleChannelPopoverClose}
+      >
+        <Stack direction={"column"}>
+          <ChannelButton
+            channel={RustChannel.Stable}
+            version={stableVersion}
+            description={`Stable version ${stableVersion}`}
+          />
+          <ChannelButton
+            channel={RustChannel.Beta}
+            version={betaVersion}
+            description={`Beta version ${betaVersion}`}
+          />
+          <ChannelButton
+            channel={RustChannel.Nightly}
+            version={nightlyVersion}
+            description={`Nightly version ${nightlyVersion}`}
+          />
+        </Stack>
+      </StyledPopover>
     </Stack>
   );
 }

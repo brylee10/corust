@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useState } from "react";
 import CloseIcon from "@mui/icons-material/Close";
-import { Alert, Grow, IconButton, Snackbar, Tooltip } from "@mui/material";
+import {
+  Alert,
+  Grow,
+  IconButton,
+  Snackbar,
+  Tooltip,
+  useTheme,
+} from "@mui/material";
 import React from "react";
 import { BouncingDotsLoader } from "./bouncingDotsLoader";
+import TerminalIcon from "@mui/icons-material/Terminal";
 
 const AUTO_HIDE_DURATION_MS: number = 6000;
 // Maximum bytes that stdout or stderr can be before child process is killed
@@ -104,6 +112,8 @@ function RunOutputDisplay({
   open,
   setOpen,
 }: RunOutputProps) {
+  const theme = useTheme();
+
   const [stderr, setStderr] = useState<string>("");
   const [stdout, setStdout] = useState<string>("");
   // Alerts user a compilation was rejected because another compilation was in progress
@@ -136,10 +146,12 @@ function RunOutputDisplay({
   }, [runOutput]);
 
   const closeOutput = useCallback(() => {
+    console.log("Closing output");
     setOpen(false);
   }, [setOpen]);
 
   const openOutput = useCallback(() => {
+    console.log("Opening output");
     setOpen(true);
   }, [setOpen]);
 
@@ -148,8 +160,8 @@ function RunOutputDisplay({
     return (
       <div className="runner-output open">
         <div className="container">
-          <div className="title-container">
-            <div className="title-open">OUTPUT</div>
+          <div className="title-container-vert">
+            <div className="title-open-vert">OUTPUT</div>
             <div className="close">
               <Tooltip title="Close Output">
                 <IconButton onClick={closeOutput}>
@@ -182,19 +194,24 @@ function RunOutputDisplay({
   }, [stderr, stdout, closeOutput, showRunningIcon]);
 
   const renderClosedOutput = useCallback(() => {
+    console.log("Rendering closed output");
     return (
-      <div className="runner-output closed">
-        <div className="container">
-          <Tooltip title="Open Output">
-            <div className="title-closed" onClick={openOutput}>
-              OUTPUT
-            </div>
-          </Tooltip>
+      <Tooltip title="Open Output">
+        <div className="runner-output closed vertical" onClick={openOutput}>
+          <div className="container">
+            <IconButton
+              size="large"
+              sx={{ color: theme.palette.primary.light }}
+            >
+              <TerminalIcon fontSize="inherit" />
+            </IconButton>
+          </div>
         </div>
-      </div>
+      </Tooltip>
     );
-  }, [openOutput]);
+  }, [openOutput, theme]);
 
+  console.log("Output is open: ", open);
   // When additional RunTypes are supported, multiple header names will be supported
   return (
     <React.Fragment>
