@@ -6,6 +6,7 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { SessionHandler } from "./components/sessionHandler.tsx";
 import UserJoin from "./components/userJoin.tsx";
 import { createTheme, ThemeProvider } from "@mui/material";
+import { Provider } from "react-redux";
 
 // Do not log INFO or DEBUG messages in production
 if (process.env.REACT_APP_ENVIRONMENT?.toLowerCase() === "production") {
@@ -36,6 +37,7 @@ const theme = createTheme({
 const root = ReactDOM.createRoot(element);
 root.render(
   <React.StrictMode>
+    {/* <Provider> */}
     <ThemeProvider theme={theme}>
       <BrowserRouter>
         <SessionHandler>
@@ -45,6 +47,7 @@ root.render(
         </SessionHandler>
       </BrowserRouter>
     </ThemeProvider>
+    {/* </Provider> */}
   </React.StrictMode>
 );
 

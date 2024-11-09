@@ -16,7 +16,7 @@ import {
   SelectionRange,
   UserSelectionRange,
 } from "../../App.tsx";
-import { Button, Stack, styled } from "@mui/material";
+import { Button, Stack, styled, useTheme } from "@mui/material";
 
 interface CodeSelectorProps {
   selected: boolean;
@@ -24,14 +24,14 @@ interface CodeSelectorProps {
 
 const CodeSelector = styled(Button)<CodeSelectorProps>(
   ({ theme, selected }) => {
-    const backgroundColor = selected ? "#FAECD8" : "#DCDCDC";
-    const hoverBackgroundColor = selected
-      ? theme.palette.secondary.dark
-      : "#A7A7A7";
+    const backgroundColor = selected ? "#C96556" : "#DCDCDC";
+    // Custom darker hover color
+    const hoverBackgroundColor = selected ? "#A15145" : "#A7A7A7";
     const fontWeight = selected ? "bold" : "normal";
+    const color = selected ? "white" : "black";
     return {
       backgroundColor,
-      color: "black",
+      color,
       border: "none",
       cursor: "pointer",
       fontWeight,
@@ -69,6 +69,7 @@ function Editor({
   userArr,
   collabSelections,
 }: EditorProps) {
+  const theme = useTheme();
   const [codeSelector, setCodeSelector] = useState<CodeSelectorType>(
     CodeSelectorType.Live
   );
@@ -365,8 +366,14 @@ function Editor({
           setView(view);
         }}
         style={{
+          fontFamily: '"Source Code Pro", monospace',
+          fontSize: "1rem",
           borderRadius: "5px",
           borderBottomLeftRadius: "0px",
+          border: `1px solid #CEA6A0`,
+          marginTop: theme.spacing(1.5),
+          flex: 1,
+          overflow: "auto", // Add scrollbars when content overflows
         }}
       />
       <Stack direction="row">{renderCodeSelectorButtons()}</Stack>

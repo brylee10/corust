@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import CloseIcon from "@mui/icons-material/Close";
 import {
   Alert,
+  Box,
   Grow,
   IconButton,
   Snackbar,
@@ -146,72 +147,68 @@ function RunOutputDisplay({
   }, [runOutput]);
 
   const closeOutput = useCallback(() => {
-    console.log("Closing output");
     setOpen(false);
   }, [setOpen]);
 
   const openOutput = useCallback(() => {
-    console.log("Opening output");
     setOpen(true);
   }, [setOpen]);
 
   // <pre> preserves the error whitespacing
   const renderOpenedOutput = useCallback(() => {
     return (
-      <div className="runner-output open">
-        <div className="container">
-          <div className="title-container-vert">
-            <div className="title-open-vert">OUTPUT</div>
-            <div className="close">
+      <Box className="runner-output open">
+        <Box className="container">
+          <Box className="title-container-vert">
+            <Box className="title-open-vert">OUTPUT</Box>
+            <Box className="close">
               <Tooltip title="Close Output">
                 <IconButton onClick={closeOutput}>
                   <CloseIcon />
                 </IconButton>
               </Tooltip>
-            </div>
-          </div>
+            </Box>
+          </Box>
           {showRunningIcon && (
-            <div className="body">
-              <div className="subtitle">Progress</div>
+            <Box className="body">
+              <Box className="subtitle">Progress</Box>
               <BouncingDotsLoader />
-            </div>
+            </Box>
           )}
-          <div className="body">
-            <div className="subtitle">Standard Error</div>
-            <div className="content">
+          <Box className="body">
+            <Box className="subtitle">Standard Error</Box>
+            <Box className="content">
               <pre>{stderr}</pre>
-            </div>
-          </div>
-          <div className="body">
-            <div className="subtitle">Standard Out</div>
-            <div className="content">
+            </Box>
+          </Box>
+          <Box className="body">
+            <Box className="subtitle">Standard Out</Box>
+            <Box className="content">
               <pre>{stdout}</pre>
-            </div>
-          </div>
-        </div>
-      </div>
+            </Box>
+          </Box>
+        </Box>
+      </Box>
     );
   }, [stderr, stdout, closeOutput, showRunningIcon]);
 
   const renderClosedOutput = useCallback(() => {
-    console.log("Rendering closed output");
     return (
       <Tooltip title="Open Output">
-        <div className="runner-output closed vertical" onClick={openOutput}>
-          <div className="container">
+        <Box className="runner-output closed vertical" onClick={openOutput}>
+          <Box className="container">
             <IconButton
               size="large"
               sx={{ color: theme.palette.primary.light }}
             >
               <TerminalIcon fontSize="inherit" />
             </IconButton>
-          </div>
-        </div>
+          </Box>
+        </Box>
       </Tooltip>
     );
   }, [openOutput, theme]);
 
-  console.log("Output is open: ", open);
   // When additional RunTypes are supported, multiple header names will be supported
   return (
     <React.Fragment>
