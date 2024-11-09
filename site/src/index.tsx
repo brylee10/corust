@@ -26,6 +26,8 @@ const theme = createTheme({
       main: "#F5EEE3",
     },
   },
+  // Default 8px spacing
+  spacing: 8,
 });
 
 const root = ReactDOM.createRoot(element);

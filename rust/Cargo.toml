@@ -8,3 +8,6 @@ members = [
     "sandbox", 
     "transforms",    
 ]
+
+[profile.release]
+lto = true

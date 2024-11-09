@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, ReactNode, useEffect } from "react";
 import {
   Button,
   ButtonGroup,
@@ -7,6 +7,9 @@ import {
   Switch,
   Stack,
   Typography,
+  Popover,
+  Fade,
+  Grow,
 } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 
@@ -22,53 +25,304 @@ const ConfigButton = styled(Button)({
   alignSelf: "center",
 });
 
-const UnclickableConfigButton = styled(ConfigButton)({
-  //   pointerEvents: "none", // Disable mouse events
-  cursor: "default", // Use default cursor
-  "&:hover": {
-    backgroundColor: "#F5EEE3", // Consistent hover color
-    // Keep consistent box shadow on hover
-    boxShadow:
-      "0px 3px 1px -2px rgba(0, 0, 0, 0.2), 0px 2px 2px 0px rgba(0, 0, 0, 0.14), 0px 1px 5px 0px rgba(0, 0, 0, 0.12)",
-  },
+const Arrow = styled("div")({
+  width: 0,
+  height: 0,
+  borderLeft: "1rem solid transparent",
+  borderRight: "1rem solid transparent",
+  borderBottom: "1rem solid white",
+  position: "absolute",
+  top: "-8px",
+  left: "50%",
+  zIndex: 1,
 });
 
-const ConfigButtonGroup = styled(ButtonGroup)({
-  border: "none",
-  "&:hover": {
-    border: "none",
-  },
-});
+const StyledPopover = ({
+  id,
+  open,
+  anchorEl,
+  onClose,
+  children,
+}: StyledPopoverProps) => {
+  const [arrowPosition, setArrowPosition] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
 
-interface RunConfigButtonsProps {
-  rustVersion: string;
+  useEffect(() => {
+    if (anchorEl && open) {
+      // Calculate position of the anchor element
+      const rect = anchorEl.getBoundingClientRect();
+      setArrowPosition({
+        top: rect.bottom + window.scrollY, // Position arrow just below the anchor
+        left: rect.left + rect.width / 2, // Center the arrow horizontally on the anchor
+      });
+    } else {
+      setArrowPosition(null); // Hide arrow when Popover is closed or anchor is unavailable
+    }
+  }, [anchorEl, open]);
+
+  return (
+    <>
+      {/* Conditionally render the Arrow below the anchorEl */}
+      {arrowPosition && (
+        <Grow
+          in={open}
+          timeout={300}
+          style={{
+            transformOrigin: "top center",
+            transform: "translateX(-50%)",
+          }}
+        >
+          <Arrow
+            style={{
+              top: arrowPosition.top,
+              left: arrowPosition.left,
+            }}
+            className="arrow"
+          />
+        </Grow>
+      )}
+
+      <Popover
+        id={id}
+        open={open}
+        anchorEl={anchorEl}
+        onClose={onClose}
+        anchorOrigin={{
+          vertical: "bottom",
+          horizontal: "center",
+        }}
+        transformOrigin={{
+          vertical: "top",
+          horizontal: "center",
+        }}
+        slotProps={{
+          paper: {
+            sx: {
+              mt: "0.75rem",
+              overflow: "visible",
+            },
+          },
+        }}
+      >
+        {children}
+      </Popover>
+    </>
+  );
+};
+
+const commonButtonStyle = {
+  justifyContent: "flex-start",
+  textAlign: "left",
+  pt: 1,
+  pb: 1,
+  pl: 2,
+  pr: 2,
+  display: "block",
+  // Placeholder empty border to prevent button
+  // from shrinking when not hovered
+  border: "1px solid #FFFFFF",
+};
+
+const commonTypographyStyle = {
+  maxWidth: "250px",
+  // No auto capitalization
+  textTransform: "none",
+};
+
+enum OptimizationLevel {
+  Debug = "Debug",
+  Release = "Release",
 }
 
-function RunConfigButtons({ rustVersion }: RunConfigButtonsProps) {
+enum RustChannel {
+  Stable = "Stable",
+  Beta = "Beta",
+  Nightly = "Nightly",
+}
+
+interface StyledPopoverProps {
+  id: string;
+  open: boolean;
+  anchorEl: HTMLElement | null;
+  onClose: () => void;
+  children: ReactNode;
+}
+
+interface OptButtonProps {
+  level: OptimizationLevel;
+  description: string;
+}
+
+interface ChannelButtonProps {
+  channel: RustChannel;
+  version: string;
+  description: string;
+}
+
+interface RunConfigButtonsProps {
+  stableVersion: string;
+  betaVersion: string;
+  nightlyVersion: string;
+}
+
+function RunConfigButtons({
+  stableVersion,
+  betaVersion,
+  nightlyVersion,
+}: RunConfigButtonsProps) {
   const [liveMode, setLiveMode] = useState(true);
+  // Optimization level
+  const [optAnchor, setOptAnchor] = React.useState<HTMLButtonElement | null>(
+    null
+  );
+  const [optLevel, setOptLevel] = useState<OptimizationLevel>(
+    OptimizationLevel.Release
+  );
+  const optPopoverOpen = Boolean(optAnchor);
+  // Rust channel
+  const [channelAnchor, setChannelAnchor] =
+    React.useState<HTMLButtonElement | null>(null);
+  const [channel, setChannel] = useState<RustChannel>(RustChannel.Stable);
+  const [channelVersion, setChannelVersion] = useState<string>(stableVersion);
+  const channelPopoverOpen = Boolean(channelAnchor);
+
+  // Optimization level buttons
+  const OptButton = ({ level, description }: OptButtonProps) => (
+    <Button
+      fullWidth
+      sx={commonButtonStyle}
+      onClick={() => {
+        setOptLevel(level);
+        handleOptPopoverClose();
+      }}
+    >
+      <Typography variant="subtitle2" fontWeight="bold" color="text.primary">
+        {level}
+      </Typography>
+      <Typography
+        variant="subtitle2"
+        color="text.secondary"
+        sx={commonTypographyStyle}
+      >
+        {description}
+      </Typography>
+    </Button>
+  );
+
+  const handleOptPopoverOpen = (event: React.MouseEvent<HTMLButtonElement>) => {
+    setOptAnchor(event.currentTarget);
+  };
+
+  const handleOptPopoverClose = () => {
+    setOptAnchor(null);
+  };
+
+  // Rust channel buttons
+  const ChannelButton = ({
+    channel,
+    version,
+    description,
+  }: ChannelButtonProps) => (
+    <Button
+      fullWidth
+      sx={commonButtonStyle}
+      onClick={() => {
+        setChannel(channel);
+        setChannelVersion(version);
+        handleChannelPopoverClose();
+      }}
+    >
+      <Typography variant="subtitle2" fontWeight="bold" color="text.primary">
+        {channel}
+      </Typography>
+      <Typography
+        variant="subtitle2"
+        color="text.secondary"
+        sx={commonTypographyStyle}
+      >
+        {description}
+      </Typography>
+    </Button>
+  );
+
+  const handleChannelPopoverOpen = (
+    event: React.MouseEvent<HTMLButtonElement>
+  ) => {
+    setChannelAnchor(event.currentTarget);
+  };
+
+  const handleChannelPopoverClose = () => {
+    setChannelAnchor(null);
+  };
+
   return (
     <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
       <ButtonGroup>
-        <ConfigButton
-          variant="contained"
-          size="small"
-          endIcon={<KeyboardArrowDownIcon />}
-          color="secondary"
-        >
-          RELEASE
-        </ConfigButton>
-        <Tooltip title={`Rust Stable Version ${rustVersion}`}>
-          <UnclickableConfigButton
+        <Tooltip title="Optimization Level">
+          <ConfigButton
             variant="contained"
             size="small"
-            disableRipple
-            disableFocusRipple
-            disableTouchRipple
+            endIcon={<KeyboardArrowDownIcon />}
             color="secondary"
+            onClick={handleOptPopoverOpen}
           >
-            STABLE
-          </UnclickableConfigButton>
+            {optLevel}
+          </ConfigButton>
         </Tooltip>
+        <StyledPopover
+          id={"optimization-popover"}
+          open={optPopoverOpen}
+          anchorEl={optAnchor}
+          onClose={handleOptPopoverClose}
+        >
+          <Stack direction={"column"}>
+            <OptButton
+              level={OptimizationLevel.Release}
+              description="Build with optimizations."
+            />
+            <OptButton
+              level={OptimizationLevel.Debug}
+              description="Build with debug information, without optimizations."
+            />
+          </Stack>
+        </StyledPopover>
+        <Tooltip title={`Rust ${channel} Channel Version ${channelVersion}`}>
+          <ConfigButton
+            variant="contained"
+            size="small"
+            endIcon={<KeyboardArrowDownIcon />}
+            color="secondary"
+            onClick={handleChannelPopoverOpen}
+          >
+            {channel}
+          </ConfigButton>
+        </Tooltip>
+        <StyledPopover
+          id={"channel-popover"}
+          open={channelPopoverOpen}
+          anchorEl={channelAnchor}
+          onClose={handleChannelPopoverClose}
+        >
+          <Stack direction={"column"}>
+            <ChannelButton
+              channel={RustChannel.Stable}
+              version={stableVersion}
+              description={`Stable version ${stableVersion}`}
+            />
+            <ChannelButton
+              channel={RustChannel.Beta}
+              version={betaVersion}
+              description={`Beta version ${betaVersion}`}
+            />
+            <ChannelButton
+              channel={RustChannel.Nightly}
+              version={nightlyVersion}
+              description={`Nightly version ${nightlyVersion}`}
+            />
+          </Stack>
+        </StyledPopover>
       </ButtonGroup>
       <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
         <Typography>Recent Run</Typography>
@@ -80,3 +334,5 @@ function RunConfigButtons({ rustVersion }: RunConfigButtonsProps) {
 }
 
 export default RunConfigButtons;
+
+export { commonButtonStyle, commonTypographyStyle, StyledPopover };
