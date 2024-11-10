@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo } from "react";
 import "../../App.css"; // Ensure to import the CSS file
 import CodeMirror, {
   ViewUpdate,
@@ -17,6 +17,13 @@ import {
   UserSelectionRange,
 } from "../../App.tsx";
 import { Button, Stack, styled, useTheme } from "@mui/material";
+import { useDispatch, useSelector } from "react-redux";
+import { RootState } from "../../store/store.tsx";
+import {
+  SelectedCodeType,
+  setLive,
+  setRecentRun,
+} from "../../store/slices/codeSelectorSlice.tsx";
 
 interface CodeSelectorProps {
   selected: boolean;
@@ -44,11 +51,6 @@ const CodeSelector = styled(Button)<CodeSelectorProps>(
   }
 );
 
-enum CodeSelectorType {
-  Live = "Live",
-  RecentRun = "Recent Run",
-}
-
 interface UserSelectionRangeColor {
   userSelectionRange: UserSelectionRange;
   // `rgb(r, g, b)` string
@@ -70,8 +72,9 @@ function Editor({
   collabSelections,
 }: EditorProps) {
   const theme = useTheme();
-  const [codeSelector, setCodeSelector] = useState<CodeSelectorType>(
-    CodeSelectorType.Live
+  const dispatch = useDispatch();
+  const codeSelector = useSelector(
+    (state: RootState) => state.codeSelector.type
   );
 
   const isSelectionFocused = useCallback(
@@ -152,6 +155,25 @@ function Editor({
 
     return decoration;
   }, []);
+
+  // Customize CodeMirror color scheme to rust
+  const rustTheme = useMemo(
+    () =>
+      EditorView.theme({
+        ".cm-activeLine": {
+          // Darker rust for the active line
+          backgroundColor: "#CEA6A044",
+        },
+        ".cm-activeLineGutter": {
+          backgroundColor: "#CEA6A044",
+        },
+        ".cm-gutters": {
+          // Light rust for gutters
+          backgroundColor: "#FEFAF9",
+        },
+      }),
+    []
+  );
 
   const extraCursorsPlugin = useMemo(() => {
     const computeCursorDecorations = (
@@ -302,12 +324,12 @@ function Editor({
   ]);
 
   const renderCodeSelectorButtons = useCallback(() => {
-    if (codeSelector === CodeSelectorType.Live) {
+    if (codeSelector === SelectedCodeType.Live) {
       return (
         <>
           <CodeSelector
             selected={true}
-            onClick={() => setCodeSelector(CodeSelectorType.Live)}
+            onClick={() => dispatch(setLive())}
             sx={{
               borderRadius: "0px",
               borderBottomLeftRadius: "5px",
@@ -317,7 +339,7 @@ function Editor({
           </CodeSelector>
           <CodeSelector
             selected={false}
-            onClick={() => setCodeSelector(CodeSelectorType.RecentRun)}
+            onClick={() => dispatch(setRecentRun())}
             sx={{
               borderRadius: "0px",
               borderBottomRightRadius: "5px",
@@ -332,7 +354,7 @@ function Editor({
         <>
           <CodeSelector
             selected={false}
-            onClick={() => setCodeSelector(CodeSelectorType.Live)}
+            onClick={() => dispatch(setLive())}
             sx={{
               borderRadius: "0px",
               borderBottomLeftRadius: "5px",
@@ -342,7 +364,7 @@ function Editor({
           </CodeSelector>
           <CodeSelector
             selected={true}
-            onClick={() => setCodeSelector(CodeSelectorType.RecentRun)}
+            onClick={() => dispatch(setRecentRun())}
             sx={{
               borderRadius: "0px",
               borderBottomRightRadius: "5px",
@@ -353,14 +375,14 @@ function Editor({
         </>
       );
     }
-  }, [codeSelector]);
+  }, [codeSelector, dispatch]);
 
   return (
     <Stack direction="column" sx={{ width: "100%", height: "100%", pb: 100 }}>
       <CodeMirror
         className="editor"
         height="100%"
-        extensions={[rust(), extraCursorsPlugin]}
+        extensions={[rust(), extraCursorsPlugin, rustTheme]}
         onUpdate={handleEditorChange}
         onCreateEditor={(view, state) => {
           setView(view);
@@ -382,3 +404,5 @@ function Editor({
 }
 
 export default Editor;
+
+export { SelectedCodeType };

@@ -3,10 +3,11 @@ import ReactDOM from "react-dom/client";
 import "./index.css";
 import reportWebVitals from "./reportWebVitals.js";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { SessionHandler } from "./components/sessionHandler.tsx";
-import UserJoin from "./components/userJoin.tsx";
+import { SessionHandler } from "./components/join/sessionHandler.tsx";
+import UserJoin from "./components/join/userJoin.tsx";
 import { createTheme, ThemeProvider } from "@mui/material";
 import { Provider } from "react-redux";
+import store from "./store/store.tsx";
 
 // Do not log INFO or DEBUG messages in production
 if (process.env.REACT_APP_ENVIRONMENT?.toLowerCase() === "production") {
@@ -37,17 +38,17 @@ const theme = createTheme({
 const root = ReactDOM.createRoot(element);
 root.render(
   <React.StrictMode>
-    {/* <Provider> */}
-    <ThemeProvider theme={theme}>
-      <BrowserRouter>
-        <SessionHandler>
-          <Routes>
-            <Route path="/:sessionId" element={<UserJoin />} />
-          </Routes>
-        </SessionHandler>
-      </BrowserRouter>
-    </ThemeProvider>
-    {/* </Provider> */}
+    <Provider store={store}>
+      <ThemeProvider theme={theme}>
+        <BrowserRouter>
+          <SessionHandler>
+            <Routes>
+              <Route path="/:sessionId" element={<UserJoin />} />
+            </Routes>
+          </SessionHandler>
+        </BrowserRouter>
+      </ThemeProvider>
+    </Provider>
   </React.StrictMode>
 );
 

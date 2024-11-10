@@ -103,13 +103,13 @@
     font-weight: 600;
 }
 
-.runner-output .body .subtitle {
+.runner-output-body .subtitle {
     font-family: "Roboto", "Helvetica", "Arial", sans-serif;
     color: var(--border-color);
     display: flex;
 }
 
-.runner-output .body .subtitle::before {
+.runner-output-body .subtitle::before {
     flex: 1;
     margin: auto;
     border-top: var(--border);
@@ -117,7 +117,7 @@
     margin-right: 1%;
 }
 
-.runner-output .body .subtitle::after {
+.runner-output-body .subtitle::after {
     flex: 1;
     margin: auto;
     border-top: var(--border);
@@ -125,10 +125,15 @@
     margin-left: 1%;
 }
 
-.runner-output .body .content {
+.runner-output-body .content {
     font-family: "Source Code Pro", monospace; /* Popular code editor fonts */
     padding-bottom: 8px;
     white-space: pre-line;
+    overflow: auto;
+}
+
+.runner-output-body {
+    margin-top: 8px;
 }
 
 .header-bar {

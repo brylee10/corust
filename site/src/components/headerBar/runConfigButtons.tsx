@@ -10,6 +10,14 @@ import {
   Grow,
 } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import {
+  RustChannel,
+  setChannel,
+  setChannelVersion,
+} from "../../store/slices/channelSlice";
+import { OptimizationLevel, setOptLevel } from "../../store/slices/optSlice";
+import { useDispatch, useSelector } from "react-redux";
+import { RootState } from "../../store/store";
 
 const ConfigButton = styled(Button)({
   padding: "10px 15px",
@@ -129,17 +137,6 @@ const commonTypographyStyle = {
   textTransform: "none",
 };
 
-enum OptimizationLevel {
-  Debug = "Debug",
-  Release = "Release",
-}
-
-enum RustChannel {
-  Stable = "Stable",
-  Beta = "Beta",
-  Nightly = "Nightly",
-}
-
 interface StyledPopoverProps {
   id: string;
   open: boolean;
@@ -170,19 +167,22 @@ function RunConfigButtons({
   betaVersion,
   nightlyVersion,
 }: RunConfigButtonsProps) {
+  const dispatch = useDispatch();
   // Optimization level
+  const optLevel = useSelector((state: RootState) => state.optSelector.level);
   const [optAnchor, setOptAnchor] = React.useState<HTMLButtonElement | null>(
     null
   );
-  const [optLevel, setOptLevel] = useState<OptimizationLevel>(
-    OptimizationLevel.Release
-  );
   const optPopoverOpen = Boolean(optAnchor);
   // Rust channel
+  const channel = useSelector(
+    (state: RootState) => state.channelSelector.channel
+  );
+  const channelVersion = useSelector(
+    (state: RootState) => state.channelVersionSelector[channel]
+  );
   const [channelAnchor, setChannelAnchor] =
     React.useState<HTMLButtonElement | null>(null);
-  const [channel, setChannel] = useState<RustChannel>(RustChannel.Stable);
-  const [channelVersion, setChannelVersion] = useState<string>(stableVersion);
   const channelPopoverOpen = Boolean(channelAnchor);
 
   // Optimization level buttons
@@ -191,7 +191,7 @@ function RunConfigButtons({
       fullWidth
       sx={commonButtonStyle}
       onClick={() => {
-        setOptLevel(level);
+        dispatch(setOptLevel(level));
         handleOptPopoverClose();
       }}
     >
@@ -226,8 +226,9 @@ function RunConfigButtons({
       fullWidth
       sx={commonButtonStyle}
       onClick={() => {
-        setChannel(channel);
-        setChannelVersion(version);
+        dispatch(setChannel(channel));
+        const channelVersionPayload = { channel, version };
+        dispatch(setChannelVersion(channelVersionPayload));
         handleChannelPopoverClose();
       }}
     >

@@ -6,12 +6,15 @@ import {
   Grow,
   IconButton,
   Snackbar,
+  styled,
   Tooltip,
   useTheme,
 } from "@mui/material";
 import React from "react";
 import { BouncingDotsLoader } from "./bouncingDotsLoader";
 import TerminalIcon from "@mui/icons-material/Terminal";
+import { useSelector } from "react-redux";
+import { RootState } from "../../store/store";
 
 const AUTO_HIDE_DURATION_MS: number = 6000;
 // Maximum bytes that stdout or stderr can be before child process is killed
@@ -107,6 +110,56 @@ const updateRunStatus = (
   return runStatus;
 };
 
+const RunnerOutput = styled("div")<{ open: boolean; isNarrowScreen: boolean }>(
+  ({ open, isNarrowScreen }) => ({
+    fontSize: 16,
+    borderRadius: 4,
+    background: "#fefaf9",
+    paddingLeft: 10,
+    paddingRight: 10,
+    borderWidth: "thin",
+    borderColor: "#CEA6A0",
+    borderStyle: "solid",
+    display: "flex",
+    flexDirection: open ? "column" : undefined,
+    paddingBottom: open ? 10 : undefined,
+    overflow: open ? "auto" : undefined,
+    flex: open ? 1 : 0,
+    cursor: !open ? "pointer" : undefined,
+    marginTop: !(isNarrowScreen && open) ? 12 : undefined,
+    marginLeft: !isNarrowScreen && !open ? 12 : undefined,
+  })
+);
+
+const Container = styled("div")<{ open: boolean }>(({ open }) => ({
+  fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+  display: "flex",
+  flexDirection: "column",
+  flex: 1,
+  alignItems: open ? undefined : "center",
+}));
+
+const TitleContainer = styled("div")({
+  display: "flex",
+  flexDirection: "row-reverse",
+  position: "relative",
+  paddingTop: 4,
+});
+
+const TitleOpen = styled("div")<{ isNarrowScreen: boolean }>(
+  ({ isNarrowScreen }) => ({
+    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    position: "absolute",
+    left: "50%",
+    transform: "translateX(-50%)",
+    paddingTop: 8,
+    color: "#C96556",
+    fontWeight: 600,
+    textAlign: isNarrowScreen ? undefined : "center",
+    flexGrow: isNarrowScreen ? undefined : 1,
+  })
+);
+
 function RunOutputDisplay({
   runOutput,
   runStatus,
@@ -114,6 +167,9 @@ function RunOutputDisplay({
   setOpen,
 }: RunOutputProps) {
   const theme = useTheme();
+  const isNarrowScreen = useSelector(
+    (state: RootState) => state.windowSize.isNarrowScreen
+  );
 
   const [stderr, setStderr] = useState<string>("");
   const [stdout, setStdout] = useState<string>("");
@@ -157,61 +213,72 @@ function RunOutputDisplay({
   // <pre> preserves the error whitespacing
   const renderOpenedOutput = useCallback(() => {
     return (
-      <Box className="runner-output open">
-        <Box className="container">
-          <Box className="title-container-vert">
-            <Box className="title-open-vert">OUTPUT</Box>
+      <RunnerOutput
+        open={open}
+        isNarrowScreen={isNarrowScreen}
+        id={"runner-output-opened"}
+      >
+        <Container open={open} id={"container-opened"}>
+          <TitleContainer>
+            <TitleOpen isNarrowScreen={isNarrowScreen}>OUTPUT</TitleOpen>
             <Box className="close">
               <Tooltip title="Close Output">
-                <IconButton onClick={closeOutput}>
+                <IconButton onClick={closeOutput} size="small">
                   <CloseIcon />
                 </IconButton>
               </Tooltip>
             </Box>
-          </Box>
+          </TitleContainer>
           {showRunningIcon && (
-            <Box className="body">
+            <Box className="runner-output-body">
               <Box className="subtitle">Progress</Box>
               <BouncingDotsLoader />
             </Box>
           )}
-          <Box className="body">
+          <Box className="runner-output-body">
             <Box className="subtitle">Standard Error</Box>
             <Box className="content">
               <pre>{stderr}</pre>
             </Box>
           </Box>
-          <Box className="body">
+          <Box className="runner-output-body">
             <Box className="subtitle">Standard Out</Box>
             <Box className="content">
               <pre>{stdout}</pre>
             </Box>
           </Box>
-        </Box>
-      </Box>
+        </Container>
+      </RunnerOutput>
     );
-  }, [stderr, stdout, closeOutput, showRunningIcon]);
+  }, [stderr, stdout, closeOutput, showRunningIcon, isNarrowScreen, open]);
 
   const renderClosedOutput = useCallback(() => {
     return (
       <Tooltip title="Open Output">
-        <Box className="runner-output closed vertical" onClick={openOutput}>
-          <Box className="container">
-            <IconButton
-              size="large"
-              sx={{ color: theme.palette.primary.light }}
-            >
-              <TerminalIcon fontSize="inherit" />
-            </IconButton>
-          </Box>
-        </Box>
+        <RunnerOutput
+          open={open}
+          isNarrowScreen={isNarrowScreen}
+          onClick={openOutput}
+          id={"runner-output-closed"}
+        >
+          <Container open={open} id={"container-closed"}>
+            <Box>
+              <IconButton
+                size="large"
+                sx={{ color: theme.palette.primary.light }}
+              >
+                <TerminalIcon fontSize="inherit" />
+              </IconButton>
+            </Box>
+          </Container>
+        </RunnerOutput>
       </Tooltip>
     );
-  }, [openOutput, theme]);
+  }, [openOutput, theme, open, isNarrowScreen]);
 
   // When additional RunTypes are supported, multiple header names will be supported
   return (
-    <React.Fragment>
+    <>
       {open ? renderOpenedOutput() : renderClosedOutput()}
       <Snackbar
         open={showConcurrentCompError}
@@ -240,7 +307,7 @@ function RunOutputDisplay({
           {MAX_OUTPUT_SIZE_BYTES} bytes. Process killed.
         </Alert>
       </Snackbar>
-    </React.Fragment>
+    </>
   );
 }
 

@@ -3,6 +3,7 @@ import React, { useCallback } from "react";
 import UserIconList from "./userIconList";
 import {
   Alert,
+  Box,
   Button,
   Grow,
   Snackbar,
@@ -51,20 +52,20 @@ function HeaderBar({
 
   return (
     <>
-      <div className="header-bar">
+      <Box className="header-bar">
         <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
           {RunButton}
           {RunConfigButtons}
         </Stack>
-        <div className="header-right">
+        <Box className="header-right">
           <UserIconList userArr={userArr} selfUserId={selfUserId} />
           <Tooltip title="Copy Corust Link">
             <CustomButton onClick={copyCorustLink} startIcon={<PeopleIcon />}>
               Share
             </CustomButton>
           </Tooltip>
-        </div>
-      </div>
+        </Box>
+      </Box>
       <Snackbar
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         open={openCopyNotification}

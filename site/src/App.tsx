@@ -22,19 +22,20 @@ import {
   Client,
 } from "corust-components/corust_components.js";
 import { useParams } from "react-router-dom";
-import { Alert, Snackbar, Grow } from "@mui/material";
+import { Alert, Snackbar, Grow, Box } from "@mui/material";
 import {
-  RunOutputDisplay,
   RunOutput,
   RunStatus,
   updateRunStatus,
   ServerRunStatus,
-} from "./components/runOutputDisplay.tsx";
+} from "./components/editor/runOutputDisplay.tsx";
 import HeaderBar from "./components/headerBar/headerBar.tsx";
 import RunButton from "./components/headerBar/runButton.tsx";
 import RunConfigButtons from "./components/headerBar/runConfigButtons.tsx";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
-import Editor from "./components/editor/editor.tsx";
+import { CargoCommand } from "./store/slices/cargoCommandSlice.tsx";
+import { useSelector } from "react-redux";
+import { RootState } from "./store/store.tsx";
+import EditorContainer from "./components/editor/container.tsx";
 
 // Interfaces/Type definitions
 
@@ -57,12 +58,6 @@ interface ExecuteCommand {
 enum TargetType {
   Library = "Library",
   Binary = "Binary",
-}
-
-enum CargoCommand {
-  Build = "Build",
-  Run = "Run",
-  Test = "Test",
 }
 
 // Document update, without metadata. These fields are sent to the server.
@@ -181,8 +176,8 @@ function App({ userId }: AppProps) {
 
   // `cargo` configuraiton
   const [targetType, setTargetType] = useState<TargetType>(TargetType.Library);
-  const [cargoCommand, setCargoCommand] = useState<CargoCommand>(
-    CargoCommand.Build
+  const cargoCommand = useSelector(
+    (state: RootState) => state.cargoCommandSelector.command
   );
   const [stableVersion, setStableVersion] = useState<string>("1.82.0");
   const [betaVersion, setBetaVersion] = useState<string>("1.82.0");
@@ -623,61 +618,13 @@ function App({ userId }: AppProps) {
     [wsSend, updateCollabSelections, client, remoteAnnotationType]
   );
 
-  const renderCargoOutput = useCallback(() => {
-    if (showCargoOutput) {
-      if (cargoOutputOpen) {
-        const cargoOutput = (
-          <>
-            <PanelResizeHandle className="resize-handle-vert" />
-            <Panel
-              className="max-height-vert"
-              collapsible={true}
-              minSize={10}
-              onCollapse={() => setCargoOutputOpen(false)}
-              id={"2"}
-            >
-              <RunOutputDisplay
-                runOutput={runOutput}
-                runStatus={runStatus}
-                open={cargoOutputOpen}
-                setOpen={setCargoOutputOpen}
-              />
-            </Panel>
-          </>
-        );
-        return cargoOutput;
-      } else {
-        // If output is closed, resize handle not needed
-        const cargoOutput = (
-          <RunOutputDisplay
-            runOutput={runOutput}
-            runStatus={runStatus}
-            open={cargoOutputOpen}
-            setOpen={setCargoOutputOpen}
-          />
-        );
-        return cargoOutput;
-      }
-    } else {
-      return null;
-    }
-  }, [
-    setCargoOutputOpen,
-    showCargoOutput,
-    cargoOutputOpen,
-    runOutput,
-    runStatus,
-  ]);
-
   return (
-    <div className="App">
+    <Box className="App">
       <HeaderBar
         RunButton={RunButton({
           runStatus,
           setShowCargoOutput,
           executeCode,
-          cargoCommand,
-          setCargoCommand,
         })}
         RunConfigButtons={RunConfigButtons({
           stableVersion,
@@ -687,17 +634,17 @@ function App({ userId }: AppProps) {
         userArr={userArr}
         selfUserId={client.user_id()}
       />
-      <PanelGroup direction="horizontal" className="max-height">
-        <Panel className="max-height" minSize={10} id={"1"}>
-          <Editor
-            setView={setView}
-            handleEditorChange={handleEditorChange}
-            userArr={userArr}
-            collabSelections={collabSelections}
-          />
-        </Panel>
-        {renderCargoOutput()}
-      </PanelGroup>
+      <EditorContainer
+        setView={setView}
+        handleEditorChange={handleEditorChange}
+        userArr={userArr}
+        collabSelections={collabSelections}
+        showCargoOutput={showCargoOutput}
+        cargoOutputOpen={cargoOutputOpen}
+        setCargoOutputOpen={setCargoOutputOpen}
+        runOutput={runOutput}
+        runStatus={runStatus}
+      />
       <Snackbar
         open={!wsOpen}
         TransitionComponent={Grow}
@@ -705,12 +652,11 @@ function App({ userId }: AppProps) {
       >
         <Alert severity="error">{wsDisconnectMsg}</Alert>
       </Snackbar>
-    </div>
+    </Box>
   );
 }
 
 export default App;
-export { CargoCommand };
 export type {
   UserSelectionRange,
   SelectionRange,

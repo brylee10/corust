@@ -1,4 +1,4 @@
-import { Tooltip } from "@mui/material";
+import { Box, Tooltip } from "@mui/material";
 import { useEffect, useState } from "react";
 
 interface UserIconProps {
@@ -53,9 +53,9 @@ function UserIcon({ name, color, isSelf }: UserIconProps) {
 
   return (
     <Tooltip title={userName} placement="bottom">
-      <div key={name} style={isSelf ? styles.self : styles.collaborator}>
+      <Box key={name} style={isSelf ? styles.self : styles.collaborator}>
         {name.charAt(0)}
-      </div>
+      </Box>
     </Tooltip>
   );
 }

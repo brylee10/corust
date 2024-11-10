@@ -1,6 +1,7 @@
 import { UserInner } from "../../../../rust/components/pkg/corust_components";
 import { useEffect, useState } from "react";
 import UserIcon from "./userIcon";
+import { Box } from "@mui/material";
 
 interface UserIconListProps {
   userArr: UserInner[];
@@ -44,9 +45,9 @@ function UserIconList({ userArr, selfUserId }: UserIconListProps) {
   }, [userArr, selfUserId]);
 
   return (
-    <div style={styles.container}>
+    <Box style={styles.container}>
       {userArrSorted.map((user) => generateUserIcon(user))}
-    </div>
+    </Box>
   );
 }
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import App from "../App.tsx";
+import App from "../../App.tsx";
 import { useParams } from "react-router-dom";
+import { Box } from "@mui/material";
 
 interface UserJoinResponse {
   // Rust server field names in snake case
@@ -77,7 +78,7 @@ function UserJoin() {
   return userId !== undefined ? (
     <App userId={userId} />
   ) : (
-    <div>Failed to connect to server</div>
+    <Box>Failed to connect to server</Box>
   );
 }
 

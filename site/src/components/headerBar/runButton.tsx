@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo, useState } from "react";
 
-import { RunStatus, RunState } from "../runOutputDisplay.tsx";
-import { CargoCommand } from "../../App.tsx";
+import { RunStatus, RunState } from "../editor/runOutputDisplay.tsx";
 import {
   commonButtonStyle,
   commonTypographyStyle,
@@ -18,6 +17,12 @@ import {
 } from "@mui/material";
 import PlayArrowIcon from "@mui/icons-material/PlayArrow";
 import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
+import {
+  CargoCommand,
+  setCargoCommand,
+} from "../../store/slices/cargoCommandSlice.tsx";
+import { useDispatch, useSelector } from "react-redux";
+import { RootState } from "../../store/store.tsx";
 
 const CustomRunButton = styled(Button)({
   padding: "10px 20px",
@@ -80,8 +85,6 @@ interface RunButtonProps {
   runStatus: RunStatus | null;
   setShowCargoOutput: (show: boolean) => void;
   executeCode: () => void;
-  cargoCommand: CargoCommand;
-  setCargoCommand: (cargoCommand: CargoCommand) => void;
 }
 
 // Represents the `Run` or `Build` button in the header bar
@@ -89,12 +92,14 @@ function RunButton({
   runStatus,
   setShowCargoOutput,
   executeCode,
-  cargoCommand,
-  setCargoCommand,
 }: RunButtonProps) {
+  const dispatch = useDispatch();
   // Cargo Command
-  // The `autoCargoCommand` is inferred by the parent component.
-  // The user set `cargoCommand` can override the `autoCargoCommand`.
+  // The `cargoCommand` is inferred by the parent component.
+  // The `cargoCommand` manually set by the user can override the `autoCargoCommand`.
+  const cargoCommand = useSelector(
+    (state: RootState) => state.cargoCommandSelector.command
+  );
   const [cargoCommandPopoverOpen, setCargoCommandPopoverOpen] = useState(false);
   const [cargoCommandAnchor, setCargoCommandAnchor] =
     useState<null | HTMLElement>(null);
@@ -127,7 +132,7 @@ function RunButton({
           fullWidth
           sx={commonButtonStyle}
           onClick={() => {
-            setCargoCommand(cargoCommand);
+            dispatch(setCargoCommand(cargoCommand));
             handleCargoCommandPopoverClose();
           }}
         >
@@ -148,7 +153,7 @@ function RunButton({
         </Button>
       );
     },
-    [handleCargoCommandPopoverClose, setCargoCommand]
+    [handleCargoCommandPopoverClose, dispatch]
   );
 
   const renderRunButton = useCallback(() => {
