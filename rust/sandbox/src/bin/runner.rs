@@ -2,8 +2,7 @@
 // https://github.com/rust-lang/rust-playground/blob/main/compiler/base/orchestrator/src/worker.rs
 
 use corust_sandbox::container::{
-    ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse, TargetType,
-    IO_COMPONENT_CHANNEL_SIZE,
+    ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse, IO_COMPONENT_CHANNEL_SIZE,
 };
 use corust_sandbox::init_logger;
 use corust_sandbox::runner::{
@@ -11,6 +10,7 @@ use corust_sandbox::runner::{
     RunnerIoComponent, SendResponseSnafu, SpawnChildSnafu, StderrCaptureSnafu, StdoutCaptureSnafu,
     WaitChildSnafu, WriteCodeSnafu,
 };
+use corust_types::TargetType;
 use env_logger::Target;
 use snafu::{OptionExt, ResultExt};
 use std::fs;
@@ -106,10 +106,10 @@ async fn handle_execute_cmd<P: AsRef<Path>>(
     stdout_tx: Sender<ContainerResponse>,
 ) -> Result<()> {
     let project_dir = project_dir.as_ref();
+    let mut cmd: Command = (&command).into();
+
     let ExecuteCommand {
-        code,
-        target_type,
-        cargo_command,
+        code, target_type, ..
     } = command;
 
     // Conditionally write the `code` to a file based on the `target_type`
@@ -126,7 +126,6 @@ async fn handle_execute_cmd<P: AsRef<Path>>(
     })?;
 
     // Runs `cargo [command]` in the project directory inside a sandboxed Docker container
-    let mut cmd: Command = cargo_command.into();
     cmd.current_dir(project_dir);
     log::debug!(
         "Executing command: {:?} in project dir {:?}",

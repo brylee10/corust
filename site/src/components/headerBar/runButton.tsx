@@ -158,20 +158,24 @@ function RunButton({
 
   const renderRunButton = useCallback(() => {
     const buttonText = buttonTextMap[cargoCommand];
+    const cargoCommandCapitalized =
+      cargoCommand.charAt(0).toUpperCase() + cargoCommand.slice(1);
     const enabledButton = (
       <>
         <ButtonGroup>
-          <CustomRunButton
-            variant="contained"
-            size="small"
-            onClick={() => {
-              setShowCargoOutput(true);
-              executeCode();
-            }}
-            endIcon={<PlayArrowIcon />}
-          >
-            {buttonText}
-          </CustomRunButton>
+          <Tooltip title={`${cargoCommandCapitalized} the code`}>
+            <CustomRunButton
+              variant="contained"
+              size="small"
+              onClick={() => {
+                setShowCargoOutput(true);
+                executeCode();
+              }}
+              endIcon={<PlayArrowIcon />}
+            >
+              {buttonText}
+            </CustomRunButton>
+          </Tooltip>
           <Tooltip title="Select Cargo Command">
             <CustomSelectButton
               variant="contained"

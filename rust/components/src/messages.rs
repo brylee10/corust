@@ -1,5 +1,6 @@
 use crate::network::{ComponentId, CursorMap, RemoteUpdate, UserId, UserList};
 use crate::server::StateId as ServerStateId;
+use corust_types::{CargoCommand, Channel, OptLevel};
 use wasm_bindgen::prelude::*;
 
 use corust_transforms::xforms::{TextOperation, TextUpdate};
@@ -209,6 +210,8 @@ pub enum ServerMessage {
     RemoteUpdate(RemoteUpdate),
     Run(RunnerOutput),
     RunStatus(RunStatus),
+    /// Useful to inform users of the code and execution environment.
+    RunConfig(RunConfig),
     Snapshot(Snapshot),
     // Split into separate message so it is usable across snapshot, updates,
     // and pruning non-gracefully disconnected users. When paired with a snapshot
@@ -239,6 +242,40 @@ pub enum RunStateUpdate {
     ClientStateOutOfSync,
     /// Indicates output size too large
     StdoutErrTooLarge,
+}
+
+/// Represents the configuration of a run, including the code to run
+/// and cargo command to execute.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum RunConfig {
+    RecentExecution(RunConfigExec),
+    ConfigUpdate(RunConfigUpdate),
+}
+
+/// Sent when a user requests to run code
+/// This should update the displayed `Recent Run` parameters
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all(serialize = "camelCase"))]
+pub struct RunConfigExec {
+    pub cargo_command: CargoCommand,
+    pub channel: Channel,
+    pub opt_level: OptLevel,
+    pub code: String,
+    /// User who requested the run
+    pub username: String,
+}
+
+/// Sent when a user updates a local run configuration
+/// (e.g. cargo command, channel, opt level)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all(serialize = "camelCase"))]
+pub struct RunConfigUpdate {
+    pub cargo_command: CargoCommand,
+    pub channel: Channel,
+    pub opt_level: OptLevel,
+    /// User who updated the run configuration
+    pub username: String,
 }
 
 /// Message sent to late joiners to sync their document

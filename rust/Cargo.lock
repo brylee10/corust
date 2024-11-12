@@ -612,6 +612,7 @@ dependencies = [
  "anyhow",
  "corust-components",
  "corust-sandbox",
+ "corust-types",
  "dashmap",
  "dotenv",
  "env_logger",
@@ -640,6 +641,7 @@ dependencies = [
  "anyhow",
  "console_error_panic_hook",
  "corust-transforms",
+ "corust-types",
  "fnv",
  "getrandom",
  "log",
@@ -661,6 +663,7 @@ dependencies = [
  "assertables",
  "bincode",
  "chrono",
+ "corust-types",
  "enumset",
  "env_logger",
  "log",
@@ -683,6 +686,13 @@ dependencies = [
  "thiserror",
  "uuid",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "corust-types"
+version = "0.1.0"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

@@ -22,7 +22,9 @@ import {
   Client,
 } from "corust-components/corust_components.js";
 import { useParams } from "react-router-dom";
-import { Alert, Snackbar, Grow, Box } from "@mui/material";
+import { Alert, Snackbar, Grow, Box, IconButton } from "@mui/material";
+import { Close as CloseIcon } from "@mui/icons-material";
+import { SnackbarProvider, enqueueSnackbar, closeSnackbar } from "notistack";
 import {
   RunOutput,
   RunStatus,
@@ -32,15 +34,66 @@ import {
 import HeaderBar from "./components/headerBar/headerBar.tsx";
 import RunButton from "./components/headerBar/runButton.tsx";
 import RunConfigButtons from "./components/headerBar/runConfigButtons.tsx";
-import { CargoCommand } from "./store/slices/cargoCommandSlice.tsx";
-import { useSelector } from "react-redux";
+import {
+  CargoCommand,
+  setCargoCommand,
+} from "./store/slices/cargoCommandSlice.tsx";
+import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "./store/store.tsx";
 import EditorContainer from "./components/editor/container.tsx";
+import { OptLevel, setOptLevel } from "./store/slices/optSlice.tsx";
+import { RustChannel, setChannel } from "./store/slices/channelSlice.tsx";
+import {
+  setExecutingUser,
+  setRecentRunCode,
+} from "./store/slices/codeSelectorSlice.tsx";
 
 // Interfaces/Type definitions
 
-// Ws message variants
+// Websocket message variants
+// Commands with a `type`, which can be deserialized by
+// the server into a corresponding Rust struct.
 type WsClientTextMsg = RustDocUpdate | RustExecuteCommand;
+
+interface RustDocUpdate {
+  type: string;
+  docUpdate: string;
+}
+
+interface RustExecuteCommand {
+  type: string;
+  code: string;
+  targetType: TargetType;
+  cargoCommand: CargoCommand;
+  optLevel: OptLevel;
+  channel: RustChannel;
+}
+
+// Describes the most recently executed code.
+type RunConfig = RecentExecutionConfig | ConfigUpdateConfig;
+
+interface RecentExecutionConfig {
+  type: RunConfigType.RecentExecution;
+  cargoCommand: CargoCommand;
+  optLevel: OptLevel;
+  channel: RustChannel;
+  recentRunCode: string;
+  // User who ran the code
+  username: string;
+}
+
+interface ConfigUpdateConfig {
+  type: RunConfigType.CargoConfig;
+  cargoCommand: CargoCommand;
+  optLevel: OptLevel;
+  channel: RustChannel;
+  // No `recentRunCode` field
+}
+
+enum RunConfigType {
+  RecentExecution = "RecentExecution",
+  CargoConfig = "CargoConfig",
+}
 
 // Document update, with additional metadata
 interface DocUpdateWrapper {
@@ -53,6 +106,8 @@ interface ExecuteCommand {
   code: string;
   targetType: TargetType;
   cargoCommand: CargoCommand;
+  optLevel: OptLevel;
+  channel: RustChannel;
 }
 
 enum TargetType {
@@ -102,22 +157,11 @@ interface AppProps {
   userId: bigint;
 }
 
-interface RustDocUpdate {
-  type: string;
-  docUpdate: string;
-}
-
-interface RustExecuteCommand {
-  type: string;
-  code: string;
-  targetType: TargetType;
-  cargoCommand: CargoCommand;
-}
-
 type ServerMessageType =
   | "RemoteUpdate"
   | "Run"
   | "RunStatus"
+  | "RunConfig"
   | "Snapshot"
   | "UserList";
 
@@ -135,6 +179,8 @@ const executeCommandToObj = (msg: ExecuteCommand): RustExecuteCommand => {
     code: msg.code,
     targetType: msg.targetType,
     cargoCommand: msg.cargoCommand,
+    optLevel: msg.optLevel,
+    channel: msg.channel,
   };
 };
 
@@ -151,6 +197,7 @@ const HAS_MAIN_FUNCTION_RE = new RegExp(
 );
 
 function App({ userId }: AppProps) {
+  const dispatch = useDispatch();
   // Maximum 1000 document updates a minute.
   // For reference, 1000 character updates per minute is a typing speed of ~200 words per minute.
   const maxUpdatesPerMinute = 1000;
@@ -178,6 +225,10 @@ function App({ userId }: AppProps) {
   const [targetType, setTargetType] = useState<TargetType>(TargetType.Library);
   const cargoCommand = useSelector(
     (state: RootState) => state.cargoCommandSelector.command
+  );
+  const optLevel = useSelector((state: RootState) => state.optSelector.level);
+  const channel = useSelector(
+    (state: RootState) => state.channelSelector.channel
   );
   const [stableVersion, setStableVersion] = useState<string>("1.82.0");
   const [betaVersion, setBetaVersion] = useState<string>("1.82.0");
@@ -299,11 +350,12 @@ function App({ userId }: AppProps) {
           const serverMessage: ServerMessage = event.data;
           const serverMessageObj = JSON.parse(serverMessage);
           // Corresponds to rust `ServerMessage` enum variant
-          const type: ServerMessageType = Object.keys(
+          const serverMsgType: ServerMessageType = Object.keys(
             serverMessageObj
           )[0] as ServerMessageType;
           console.debug("Server message: ", serverMessageObj);
-          switch (type) {
+          console.debug("Server message type: ", serverMsgType);
+          switch (serverMsgType) {
             case "RemoteUpdate":
             case "Snapshot":
             case "UserList":
@@ -380,12 +432,14 @@ function App({ userId }: AppProps) {
               }
               break;
             case "Run":
-              const runOutput = serverMessageObj[type] as RunOutput;
+              const runOutput = serverMessageObj[serverMsgType] as RunOutput;
               console.debug("Received run output: ", runOutput);
               setRunOutput(runOutput);
               break;
             case "RunStatus":
-              const serverRunStatus = serverMessageObj[type] as ServerRunStatus;
+              const serverRunStatus = serverMessageObj[
+                serverMsgType
+              ] as ServerRunStatus;
               console.debug(
                 "Received server run status message: ",
                 serverRunStatus
@@ -402,8 +456,58 @@ function App({ userId }: AppProps) {
               // is sufficient and preferrable over toggling in the `Run` message handler.
               setShowCargoOutput(true);
               break;
+            case "RunConfig":
+              const runConfig: RunConfig = serverMessageObj[serverMsgType];
+              const runConfigType = runConfig.type;
+              const channel = runConfig.channel;
+              const optLevel = runConfig.optLevel;
+              const cargoCommand = runConfig.cargoCommand;
+
+              dispatch(setChannel(channel));
+              dispatch(setOptLevel(optLevel));
+              dispatch(setCargoCommand(cargoCommand));
+
+              if (runConfigType === RunConfigType.RecentExecution) {
+                const recentRunCode = runConfig.recentRunCode;
+                const executingUser = runConfig.username;
+                dispatch(setRecentRunCode(recentRunCode));
+                dispatch(setExecutingUser(executingUser));
+                // Enqueue an info snackbar
+                console.debug("Enqueueing snackbar");
+                enqueueSnackbar(
+                  <span>
+                    User <strong>{executingUser}</strong> ran:{" "}
+                    <code>cargo {cargoCommand.toLowerCase()}</code>
+                  </span>,
+                  {
+                    // Style mirrors the `channel` and `optLevel` colors,
+                    // secondary button colors
+                    style: {
+                      backgroundColor: "#F5EEE3",
+                      color: "black",
+                    },
+                    action: (key) => (
+                      <IconButton
+                        aria-label="close"
+                        color="inherit"
+                        onClick={() => closeSnackbar(key)}
+                      >
+                        <CloseIcon />
+                      </IconButton>
+                    ),
+                  }
+                );
+              } else {
+              }
+
+              console.debug(
+                "Received run config message: ",
+                serverMessageObj[serverMsgType]
+              );
+
+              break;
             default:
-              console.error("Unknown server message type: ", type);
+              console.error("Unknown server message type: ", serverMsgType);
           }
         },
         { signal }
@@ -445,12 +549,13 @@ function App({ userId }: AppProps) {
     dispatchTransaction,
     view,
     updateCollabSelections,
+    dispatch,
   ]);
 
   // Sends a stringified object to the server
   const wsSend = useCallback((wsMessage: WsClientTextMsg) => {
-    console.debug("Try sending ws message", ws.current, ws.current?.readyState);
     const stringifiedMsg = JSON.stringify(wsMessage);
+    console.debug("Try sending ws message", stringifiedMsg);
     if (ws.current && ws.current.readyState === WebSocket.OPEN) {
       ws.current.send(stringifiedMsg);
     } else {
@@ -488,12 +593,21 @@ function App({ userId }: AppProps) {
       code: codeContainerText.code,
       targetType: targetType,
       cargoCommand: cargoCommand,
+      optLevel: optLevel,
+      channel: channel,
     };
 
     const executeCommandObj = executeCommandToObj(executeCommand);
     console.debug("Sending execute command over ws: ", executeCommand);
     wsSend(executeCommandObj);
-  }, [codeContainerText.code, wsSend, targetType, cargoCommand]);
+  }, [
+    codeContainerText.code,
+    wsSend,
+    targetType,
+    cargoCommand,
+    optLevel,
+    channel,
+  ]);
 
   const handleEditorChange = useCallback(
     (viewUpdate: ViewUpdate) => {
@@ -652,6 +766,14 @@ function App({ userId }: AppProps) {
       >
         <Alert severity="error">{wsDisconnectMsg}</Alert>
       </Snackbar>
+      <SnackbarProvider
+        maxSnack={3}
+        autoHideDuration={5000}
+        anchorOrigin={{
+          vertical: "bottom",
+          horizontal: "right",
+        }}
+      />
     </Box>
   );
 }

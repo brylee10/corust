@@ -6,7 +6,9 @@ use std::{
     },
 };
 
-use corust_components::{RunStateUpdate, RunStatus, RunnerOutput, ServerMessage};
+use corust_components::{
+    RunConfig, RunConfigExec, RunStateUpdate, RunStatus, RunnerOutput, ServerMessage,
+};
 use corust_sandbox::container::{
     ContainerError, ContainerFactory, ContainerMessage, ContainerResponse, ContainerRunRet,
     ExecuteResponse,
@@ -112,6 +114,7 @@ pub(crate) fn container_response_to_runner_output(
             stdout,
             stderr,
             exit_code,
+            ..
         }) => {
             let stdout = String::from_utf8_lossy(stdout).to_string();
             let stderr = String::from_utf8_lossy(stderr).to_string();
@@ -156,6 +159,7 @@ impl RunProgressNotifier {
         }
     }
 
+    // Acquires the code lock for the session. Returns an error if a concurrent compilation.
     async fn try_acquire_code_lock(&self) -> Result<(), RunCodeError> {
         // Acquire and drop the session lock. Do not hold it across the container run.
         log::debug!("Before acquire session lock in run_code");
@@ -192,6 +196,7 @@ pub(crate) async fn run_code(
     container_factory: SharedContainerFactory,
     container_response_tx: Sender<ContainerResponse>,
     bcast_tx: broadcast::Sender<ServerMessage>,
+    username: String,
 ) -> Result<(), RunCodeError> {
     // Check and disallow concurrent compilations in the same session
     let run_type = RunType::from(&container_msg);
@@ -200,13 +205,35 @@ pub(crate) async fn run_code(
     run_progress_notifier.try_acquire_code_lock().await?;
 
     let container = container_factory.create_container_docker_backend().await?;
-    // Factory no longer needed
+    // Shared factory no longer needed
     std::mem::drop(container_factory);
+
+    // Inform other clients about run configuration
+    let run_config_msg = ServerMessage::RunConfig(RunConfig::RecentExecution(RunConfigExec {
+        opt_level: container_msg.opt_level(),
+        channel: container_msg.channel(),
+        cargo_command: container_msg.cargo_command(),
+        code: container_msg.code().to_string(),
+        username,
+    }));
+    if let Err(e) = bcast_tx.send(run_config_msg) {
+        // Not an error, just means all receiver handles have been closed
+        log::info!("All receiver handles have been closed. {e:?}");
+    }
 
     let ContainerRunRet {
         mut child,
         mut child_io,
-    } = container.run().await?;
+    } = container.run(container_msg.channel()).await?;
+
+    // Implicit starting state of all executions, an empty stdout/stdin. Useful to reset all users previous output
+    // if existing from previous runs.
+    // Note, the run starting and output clear is not in the same message so not atomic.
+    let clear_output = ContainerResponse::Execute(ExecuteResponse {
+        stdout: Vec::new(),
+        stderr: Vec::new(),
+        exit_code: None,
+    });
 
     // `child_stdin_tx` is always `Some()` after construction via `container.run()`
     child_io
@@ -216,10 +243,6 @@ pub(crate) async fn run_code(
         .send(container_msg)
         .await?;
 
-    // Implicit starting state of all executions, an empty stdout/stdin. Useful to reset all users previous output
-    // if existing from previous runs.
-    // Note, the run starting and output clear is not in the same message so not atomic.
-    let clear_output = ContainerResponse::Execute(ExecuteResponse::default());
     container_response_tx.send(clear_output).await?;
 
     // Read from child stdout until it closes. Do not wait the child before this otherwise

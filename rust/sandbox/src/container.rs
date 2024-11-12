@@ -11,6 +11,7 @@ use std::{
 };
 
 use chrono::Utc;
+use corust_types::{CargoCommand, Channel, OptLevel, TargetType};
 use enumset::{EnumSet, EnumSetType};
 use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
@@ -82,28 +83,23 @@ pub enum ContainerError {
 
 type Result<T, E = ContainerError> = std::result::Result<T, E>;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum TargetType {
-    Library,
-    Binary,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum CargoCommand {
-    Build,
-    Run,
-    Test,
-    Clippy,
-}
-
-impl From<CargoCommand> for Command {
-    fn from(cargo_command: CargoCommand) -> Self {
+impl From<&ExecuteCommand> for Command {
+    fn from(execute_command: &ExecuteCommand) -> Self {
         let mut command = Command::new("cargo");
-        match cargo_command {
-            CargoCommand::Build => command.arg("build").arg("--release"),
-            CargoCommand::Run => command.arg("run").arg("--release"),
+        match &execute_command.channel {
+            Channel::Stable => command.arg("+stable"),
+            Channel::Beta => command.arg("+beta"),
+            Channel::Nightly => command.arg("+nightly"),
+        };
+        match &execute_command.cargo_command {
+            CargoCommand::Build => command.arg("build"),
+            CargoCommand::Run => command.arg("run"),
             CargoCommand::Test => command.arg("test"),
             CargoCommand::Clippy => command.arg("clippy"),
+        };
+        match &execute_command.opt_level {
+            OptLevel::Debug => &mut command,
+            OptLevel::Release => command.arg("--release"),
         };
         command
     }
@@ -115,28 +111,67 @@ pub struct ExecuteCommand {
     pub code: String,
     pub target_type: TargetType,
     pub cargo_command: CargoCommand,
+    pub opt_level: OptLevel,
+    pub channel: Channel,
 }
 
 impl ExecuteCommand {
-    pub fn new(code: String, target_type: TargetType, cargo_command: CargoCommand) -> Self {
+    pub fn new(
+        code: String,
+        target_type: TargetType,
+        cargo_command: CargoCommand,
+        opt_level: OptLevel,
+        channel: Channel,
+    ) -> Self {
         ExecuteCommand {
             code,
             target_type,
             cargo_command,
+            opt_level,
+            channel,
         }
     }
 }
 
+/// Represents a message sent to the container to execute code
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ContainerMessage {
     Execute(ExecuteCommand),
 }
 
+// `ContainerMessage` represents a code execution, so all `ContainerMessage` should share these features
+impl ContainerMessage {
+    pub fn channel(&self) -> Channel {
+        match self {
+            ContainerMessage::Execute(execute_command) => execute_command.channel,
+        }
+    }
+
+    pub fn cargo_command(&self) -> CargoCommand {
+        match self {
+            ContainerMessage::Execute(execute_command) => execute_command.cargo_command,
+        }
+    }
+
+    pub fn opt_level(&self) -> OptLevel {
+        match self {
+            ContainerMessage::Execute(execute_command) => execute_command.opt_level,
+        }
+    }
+
+    pub fn code(&self) -> &str {
+        match self {
+            ContainerMessage::Execute(execute_command) => &execute_command.code,
+        }
+    }
+}
+
 // Mirrors `std::process::Output`
 // Implements `Default` to send a clear responses at the start of all executions.
 // All executions start with empty stdout and stderr, clearing output from prior runs.
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ExecuteResponse {
+    /// Fields which are updated as the code is executed
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
     pub exit_code: Option<i32>,
@@ -165,11 +200,11 @@ impl Display for ContainerResponse {
 /// A backend run creates a [`tokio::process::Command`] and runs it,
 /// providing handles to the IO file handles.
 pub trait Backend {
-    fn prepare_command(&self) -> Command;
+    fn prepare_command(&self, channel: Channel) -> Command;
 
     // Starts `runner` process which asynchronously waits for messages via stdin
-    fn start_runner_in_background(&self) -> Result<RunContainerResult> {
-        let mut cmd = self.prepare_command();
+    fn start_runner_in_background(&self, channel: Channel) -> Result<RunContainerResult> {
+        let mut cmd = self.prepare_command(channel);
         log::debug!("Running command: {:?}", cmd);
 
         let mut child = cmd
@@ -205,10 +240,10 @@ impl DockerBackend {
 }
 
 impl Backend for DockerBackend {
-    fn prepare_command(&self) -> Command {
+    fn prepare_command(&self, channel: Channel) -> Command {
         let mut cmd = docker_utils::sandboxed_docker_command();
         let container_name = docker_utils::container_name();
-        let image_name = "corust";
+        let image_name = format!("rust-{}", channel);
 
         cmd.args(["-a", "stdin", "-a", "stdout", "-a", "stderr"])
             // Keep stdin open
@@ -257,7 +292,7 @@ mod docker_utils {
     pub fn container_name() -> String {
         let date_now = Utc::now();
         // unwrap: date time from Utc::now() is not out of range
-        let date_now_formatted = format!("{}", date_now.format("%Y%m%d-%H%M%S-%f"));
+        let date_now_formatted = format!("{}", date_now.format("%Y%m%d-%H%M%S"));
         format!("corust-{}-{}", date_now_formatted, rand::random::<u32>())
     }
 }
@@ -283,6 +318,7 @@ impl ContainerFactory {
         }
     }
 
+    /// Creates a container, waiting for a permit.
     /// A container factory can generate containers with any backend.
     pub async fn create_container<B: Backend>(&self, backend: B) -> Result<Container<B>> {
         let run_container_permit = Arc::clone(&self.semaphore)
@@ -324,19 +360,21 @@ impl<B: Backend> Container<B> {
         }
     }
 
-    pub async fn run(&self) -> Result<ContainerRunRet> {
+    /// Run the container, returning the child process and IO handles.
+    /// The channel specifies the environment to run the code in.
+    pub async fn run(&self, channel: Channel) -> Result<ContainerRunRet> {
         // A container corresponds to one coding session, so it can only execute one
         // code file at a time. Check and set "is running" in one operation.
         if let Err(prev_val) =
             self.is_executing
                 .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
         {
-            debug_assert!(prev_val, "Container should already be executing");
+            debug_assert!(prev_val, "Container should not already be executing");
             return Err(ContainerError::ContainerAlreadyExecuting);
         }
 
         // Run a docker container, returning the container stdin, stdout, and stderr
-        let run_container = self.backend.start_runner_in_background()?;
+        let run_container = self.backend.start_runner_in_background(channel)?;
         let RunContainerResult {
             stdin,
             stdout,
@@ -389,7 +427,7 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
                 .context(ReadStdoutSnafu)?;
 
             if msg_size_buf_bytes == 0 {
-                log::debug!("Child stdout has closed");
+                log::debug!("Child stdout has closed, reached EOF");
                 return Ok(());
             }
 
@@ -535,7 +573,7 @@ mod test {
             });
 
             INIT_TEST_RUNNER.call_once(|| {
-                // Initialize all binaries in the crate, including the test runner
+                // Initialize all binaries in this crate, including the test runner
                 let mut cmd = std::process::Command::new("cargo");
                 cmd.arg("build")
                     .output()
@@ -558,7 +596,9 @@ mod test {
     }
 
     impl Backend for TestContainerBackend {
-        fn prepare_command(&self) -> Command {
+        // The test backend runs the tests in the same environment
+        // (assumes rustup has stable, beta, and nightly toolchains installed)
+        fn prepare_command(&self, _channel: Channel) -> Command {
             // Test runs with working directory of package root
             let mut cmd = if cfg!(target_os = "windows") {
                 Command::new("../target/debug/runner.exe")
@@ -595,12 +635,14 @@ mod test {
         let ContainerRunRet {
             mut child,
             mut child_io,
-        } = container.run().await.unwrap();
+        } = container.run(Channel::Stable).await.unwrap();
 
         let execute_command = ExecuteCommand::new(
             "fn main() { println!(\"Hello world!\"); }".to_string(),
             TargetType::Binary,
             CargoCommand::Run,
+            OptLevel::Release,
+            Channel::Stable,
         );
         let message = ContainerMessage::Execute(execute_command);
         child_io
@@ -619,6 +661,8 @@ mod test {
             .to_string(),
             TargetType::Binary,
             CargoCommand::Run,
+            OptLevel::Release,
+            Channel::Stable,
         );
         let message = ContainerMessage::Execute(execute_command);
         child_io
@@ -655,7 +699,7 @@ mod test {
         let ContainerRunRet {
             mut child,
             mut child_io,
-        } = container.run().await.unwrap();
+        } = container.run(Channel::Stable).await.unwrap();
 
         let execute_command = ExecuteCommand::new(
             "fn main() { 
@@ -664,6 +708,8 @@ mod test {
             .to_string(),
             TargetType::Binary,
             CargoCommand::Run,
+            OptLevel::Release,
+            Channel::Stable,
         );
         let message = ContainerMessage::Execute(execute_command);
         child_io
@@ -711,12 +757,14 @@ mod test {
         let ContainerRunRet {
             mut child,
             mut child_io,
-        } = container.run().await.unwrap();
+        } = container.run(Channel::Stable).await.unwrap();
 
         let execute_command = ExecuteCommand::new(
             "struct Test { x: i32 }".to_string(),
             TargetType::Library,
             CargoCommand::Build,
+            OptLevel::Release,
+            Channel::Stable,
         );
 
         let message = ContainerMessage::Execute(execute_command);
@@ -742,6 +790,202 @@ mod test {
             ContainerResponse::Execute(response) => {
                 let stderr = String::from_utf8_lossy(&response.stderr);
                 assert_contains!(stderr, "Finished `release` profile");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_opt_level_build() {
+        // Tests code is compiled in debug mode when [`OptLevel::Debug`] is passed
+        // and in release mode when [`OptLevel::Release`] is passed.
+        // The code will panic in debug mode but not in release mode.
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
+        struct ExpectedOutput {
+            stderr: String,
+            stdout: String,
+            exit_code: i32,
+        }
+
+        let expected_output = [
+            ExpectedOutput {
+                stderr: "thread 'main' panicked".to_string(),
+                stdout: "".to_string(),
+                exit_code: 101,
+            },
+            ExpectedOutput {
+                stderr: "".to_string(),
+                stdout: "Hello world".to_string(),
+                exit_code: 0,
+            },
+        ];
+
+        for (opt_level, expected_output) in [OptLevel::Debug, OptLevel::Release]
+            .iter()
+            .zip(expected_output.iter())
+        {
+            // One container (which maps 1-1 with a runner) must be created for each run
+            let backend = init_test_backend();
+            let container = container_factory.create_container(backend).await.unwrap();
+            let ContainerRunRet {
+                mut child,
+                mut child_io,
+            } = container.run(Channel::Stable).await.unwrap();
+
+            // Only panics in debug mode, prints "Hello world" in release mode
+            let execute_command = ExecuteCommand::new(
+                r#"fn main() { debug_assert!(false); println!("Hello world") }"#.to_string(),
+                TargetType::Binary,
+                CargoCommand::Run,
+                *opt_level,
+                Channel::Stable,
+            );
+
+            let message = ContainerMessage::Execute(execute_command);
+            child_io
+                .child_stdin_tx
+                .as_ref()
+                .unwrap()
+                .send(message)
+                .await
+                .unwrap();
+
+            // Child process succeeds, but the code it runs will panic
+            let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+            assert!(exit_code.success());
+
+            // Get the last value, the output is built up incrementally
+            let mut response: Option<ContainerResponse> = None;
+            while let Some(value) = child_io.child_stdout_rx.recv().await {
+                response = Some(value);
+            }
+
+            let response = response.unwrap();
+            assert!(matches!(response, ContainerResponse::Execute(_)));
+            match response {
+                ContainerResponse::Execute(response) => {
+                    let stderr = String::from_utf8_lossy(&response.stderr);
+                    assert_contains!(stderr, &expected_output.stderr);
+                    let stdout = String::from_utf8_lossy(&response.stdout);
+                    assert_contains!(stdout, &expected_output.stdout);
+                    let exit_code = response.exit_code.unwrap();
+                    // Exit code, convention for panic:
+                    // https://users.rust-lang.org/t/solved-why-101-exit-code-when-use-panic/80061
+                    assert_eq!(exit_code, expected_output.exit_code);
+                }
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_cargo_test() {
+        // Test code compiled with `cargo test` runs tests
+        let backend = init_test_backend();
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
+        let container = container_factory.create_container(backend).await.unwrap();
+        let ContainerRunRet {
+            mut child,
+            mut child_io,
+        } = container.run(Channel::Stable).await.unwrap();
+
+        let execute_command = ExecuteCommand::new(
+            r#"
+            #[cfg(test)]
+            mod tests {
+                #[test]
+                fn it_works() {
+                    assert_eq!(2 + 2, 4);
+                }
+            }
+            "#
+            .to_string(),
+            TargetType::Library,
+            CargoCommand::Test,
+            OptLevel::Release,
+            Channel::Stable,
+        );
+
+        let message = ContainerMessage::Execute(execute_command);
+        child_io
+            .child_stdin_tx
+            .as_ref()
+            .unwrap()
+            .send(message)
+            .await
+            .unwrap();
+
+        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        assert!(exit_code.success());
+
+        // Get the last value
+        let mut response: Option<ContainerResponse> = None;
+        while let Some(value) = child_io.child_stdout_rx.recv().await {
+            response = Some(value);
+        }
+        let response = response.unwrap();
+        assert!(matches!(response, ContainerResponse::Execute(_)));
+        match response {
+            ContainerResponse::Execute(response) => {
+                let stdout = String::from_utf8_lossy(&response.stdout);
+                assert_contains!(stdout, "running 1 test");
+                assert_contains!(stdout, "test tests::it_works ... ok");
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_nightly_build() {
+        // Test code compiled with nightly toolchain builds (allows nightly flags)
+        let backend = init_test_backend();
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
+        let container = container_factory.create_container(backend).await.unwrap();
+        // Note that the channel configuration in tests does not have an affect, but would in production docker containers.
+        let ContainerRunRet {
+            mut child,
+            mut child_io,
+        } = container.run(Channel::Nightly).await.unwrap();
+
+        // Select an internal Rust function that does not have a stable counterpart and
+        // should not be stabilized in the future. This should only compile and run on nightly.
+        // https://doc.rust-lang.org/std/intrinsics/fn.unlikely.html
+        let execute_command = ExecuteCommand::new(
+            r#"
+            #![feature(core_intrinsics)]
+            fn main() {
+                let _ = std::intrinsics::unlikely(false);
+            }
+            "#
+            .to_string(),
+            TargetType::Binary,
+            CargoCommand::Build,
+            OptLevel::Release,
+            Channel::Nightly,
+        );
+
+        let message = ContainerMessage::Execute(execute_command);
+        child_io
+            .child_stdin_tx
+            .as_ref()
+            .unwrap()
+            .send(message)
+            .await
+            .unwrap();
+
+        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        assert!(exit_code.success());
+
+        // Get the last value
+        let mut response: Option<ContainerResponse> = None;
+        while let Some(value) = child_io.child_stdout_rx.recv().await {
+            response = Some(value);
+        }
+        let response = response.unwrap();
+        assert!(matches!(response, ContainerResponse::Execute(_)));
+        match response {
+            ContainerResponse::Execute(response) => {
+                let stderr = String::from_utf8_lossy(&response.stderr);
+                assert_contains!(stderr, "Finished `release` profile");
+                let exit_code = response.exit_code.unwrap();
+                assert_eq!(exit_code, 0);
             }
         }
     }

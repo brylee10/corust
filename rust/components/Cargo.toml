@@ -12,6 +12,7 @@ crate-type = ["cdylib", "lib"]
 anyhow                      = "1"
 console_error_panic_hook    = "0.1"
 corust-transforms           = { version = "*", path = "../transforms" }
+corust-types                = { version = "*", path = "../types" }
 fnv                         = "1"
 # Not a direct dependency, but listed to enable the "js" feature to toggle `wasm32-unknown-unknown` support
 getrandom                   = { version = "0.2", features = ["js"] }

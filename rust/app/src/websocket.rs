@@ -84,6 +84,15 @@ pub(crate) async fn handle_websocket(
     let (bcast_tx, server) = (session.bcast_tx(), session.server());
     let bcast_rx = bcast_tx.subscribe();
     let (mut ws_tx, ws_rx) = websocket.split();
+    // unwrap: `user_id` will correspond to a username in the session
+    let username = server
+        .read()
+        .await
+        .users()
+        .get(&user_id)
+        .unwrap()
+        .username()
+        .to_string();
 
     // Sync the late joiner with the current server doc state
     send_snapshot(Arc::clone(&server), &mut ws_tx).await;
@@ -113,6 +122,7 @@ pub(crate) async fn handle_websocket(
         session_id,
         Arc::clone(&container_factory),
         db_path,
+        username,
     ));
 }
 
@@ -143,6 +153,7 @@ async fn handle_messages(
     session_id: SessionId,
     container_factory: SharedContainerFactory,
     db_path: PathBuf,
+    username: String,
 ) -> Result<(), WebSocketError> {
     'outer: loop {
         tokio::select! {
@@ -155,7 +166,8 @@ async fn handle_messages(
                     user_id,
                     session_id.clone(),
                     Arc::clone(&session),
-                    Arc::clone(&container_factory)
+                    Arc::clone(&container_factory),
+                    &username,
                 ).await?;
                 // Terminate handler for this client connection. User has (un)gracefully
                 // closed the websocket.
@@ -196,6 +208,7 @@ async fn handle_ws_message(
     session_id: SessionId,
     session: SharedSession,
     container_factory: SharedContainerFactory,
+    username: &str,
 ) -> Result<IsConnectionOpen, WebSocketError> {
     // handle client ws messages, broadcast to others
     match next {
@@ -209,6 +222,7 @@ async fn handle_ws_message(
                         shared_ws_tx,
                         session,
                         container_factory,
+                        username,
                     )
                     .await?;
                 } else if msg.is_pong() {
@@ -242,6 +256,7 @@ async fn handle_text_message(
     shared_ws_tx: SharedWsSender,
     session: SharedSession,
     container_factory: SharedContainerFactory,
+    username: &str,
 ) -> Result<(), WebSocketError> {
     // Convert network serialized method into native struct
     // to_str() is always valid because msg `is_text`
@@ -294,15 +309,19 @@ async fn handle_text_message(
             let container_factory = Arc::clone(&container_factory);
             let bcast_tx = bcast_tx.clone();
             let shared_ws_tx = Arc::clone(&shared_ws_tx);
-            tokio::spawn(async move {
-                handle_execution(
-                    execute_command,
-                    session,
-                    bcast_tx,
-                    container_factory,
-                    shared_ws_tx,
-                )
-                .await;
+            tokio::spawn({
+                let username = username.to_string();
+                async move {
+                    handle_execution(
+                        execute_command,
+                        session,
+                        bcast_tx,
+                        container_factory,
+                        shared_ws_tx,
+                        username,
+                    )
+                    .await;
+                }
             });
         }
     };
@@ -343,6 +362,7 @@ async fn forward_broadcast_message(
     msg: Result<ServerMessage, tokio::sync::broadcast::error::RecvError>,
     shared_ws_tx: SharedWsSender,
 ) -> Result<(), WebSocketError> {
+    log::error!("Received broadcast message from server: {:?}", msg);
     match msg {
         Ok(msg) => {
             let msg = serde_json::to_string(&msg)
@@ -404,11 +424,13 @@ async fn handle_execution(
     bcast_tx: broadcast::Sender<ServerMessage>,
     container_factory: SharedContainerFactory,
     shared_ws_tx: SharedWsSender,
+    username: String,
 ) {
     let container_msg = ContainerMessage::Execute(execute_command);
     let (container_response_tx, mut container_response_rx) =
         mpsc::channel(CONTAINER_RESPONSE_MSG_LIMIT);
 
+    // Not spawn blocking because the executing container is eventually spawned as a child process
     let handle = tokio::spawn({
         let bcast_tx = bcast_tx.clone();
         async move {
@@ -418,6 +440,7 @@ async fn handle_execution(
                 Arc::clone(&container_factory),
                 container_response_tx,
                 bcast_tx,
+                username,
             )
             .await
         }

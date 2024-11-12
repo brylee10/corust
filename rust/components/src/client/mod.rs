@@ -380,7 +380,9 @@ impl Client {
                 }
             }
             // The client only handles ServerMessages for maintaining collaboration state, not code execution
-            ServerMessage::Run(_) | ServerMessage::RunStatus(_) => None,
+            ServerMessage::Run(_) | ServerMessage::RunStatus(_) | ServerMessage::RunConfig(_) => {
+                None
+            }
             ServerMessage::Snapshot(snapshot) => {
                 self.document = snapshot.document.to_string();
                 self.cursor_map = snapshot.cursor_map.clone();
@@ -483,7 +485,10 @@ impl Client {
                 ));
                 self.last_server_state_id = snapshot.state_id;
             }
-            ServerMessage::Run(_) | ServerMessage::RunStatus(_) | ServerMessage::UserList(_) => {
+            ServerMessage::Run(_)
+            | ServerMessage::RunStatus(_)
+            | ServerMessage::RunConfig(_)
+            | ServerMessage::UserList(_) => {
                 // Run messages and UserList do represent a doc or cursor map update so it does not hold a state ID
             }
         }

@@ -6,7 +6,8 @@ members = [
     "components", 
     "populate_crates",
     "sandbox", 
-    "transforms",    
+    "transforms",  
+    "types",  
 ]
 
 [profile.release]

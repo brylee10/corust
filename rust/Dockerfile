@@ -3,6 +3,9 @@
 
 FROM ubuntu:24.04 as toolchain
 
+# Default to building the stable Rust channel
+ARG CHANNEL=stable
+
 LABEL description="Corust containerized code execution environment."
 
 # Install packages in non-interactive mode
@@ -25,13 +28,18 @@ USER corust
 ENV USER=corust
 ENV PATH=/corust/.cargo/bin:$PATH
 
+RUN echo "Using Rust channel: ${CHANNEL}"
+
+# Invalidate docker cached layer and redownload `rustup` and Rust if the `rustup` version or channel version changes.
+ADD --chown=playground https://static.rust-lang.org/rustup/release-stable.toml /corust/tools/rustup-manifest.toml
+ADD --chown=playground https://static.rust-lang.org/dist/channel-rust-${CHANNEL}-date.txt /corust/tools/rust-channel-version
 # Install Rust (currently only supports stable)
 # Pre-installs common components: https://rust-lang.github.io/rustup/concepts/components.html
 # Layer is ~1GB in size and provides cargo, rustc, rustup, rustfmt, etc. 
 RUN curl https://sh.rustup.rs -sSf | sh -s -- \
     -y \
     --profile minimal \
-    --default-toolchain "stable" \
+    --default-toolchain ${CHANNEL} \
     --target wasm32-unknown-unknown \
     --component rustfmt \
     --component clippy \
@@ -52,7 +60,9 @@ FROM toolchain
 WORKDIR /corust
 RUN cargo init /corust
 COPY --chown=corust populate_crates/Cargo.toml.sandbox /corust/Cargo.toml
+# Pre-build the project to cache dependencies (release and debug)
 RUN cargo build --release
+RUN cargo build
 RUN rm src/*.rs
 
 ENTRYPOINT ["/corust/tools/entrypoint.sh"]

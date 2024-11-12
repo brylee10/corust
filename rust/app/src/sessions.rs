@@ -11,7 +11,7 @@ use corust_components::{
     server::{DocumentState, Server},
     ServerMessage,
 };
-use corust_sandbox::container::CargoCommand;
+use corust_types::CargoCommand;
 use dashmap::DashMap;
 use fnv::FnvHashMap;
 use tokio::sync::{

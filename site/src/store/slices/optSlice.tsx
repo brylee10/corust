@@ -5,7 +5,7 @@
 
 import { createSlice } from "@reduxjs/toolkit";
 
-enum OptimizationLevel {
+enum OptLevel {
   Debug = "Debug",
   Release = "Release",
 }
@@ -13,7 +13,7 @@ enum OptimizationLevel {
 const optSlice = createSlice({
   name: "optimization",
   initialState: {
-    level: OptimizationLevel.Release,
+    level: OptLevel.Release,
   },
   reducers: {
     setOptLevel(state, action) {
@@ -22,6 +22,6 @@ const optSlice = createSlice({
   },
 });
 
-export { OptimizationLevel };
+export { OptLevel };
 export const { setOptLevel } = optSlice.actions;
 export default optSlice.reducer;

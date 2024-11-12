@@ -15,7 +15,7 @@ import {
   setChannel,
   setChannelVersion,
 } from "../../store/slices/channelSlice";
-import { OptimizationLevel, setOptLevel } from "../../store/slices/optSlice";
+import { OptLevel, setOptLevel } from "../../store/slices/optSlice";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../../store/store";
 
@@ -146,7 +146,7 @@ interface StyledPopoverProps {
 }
 
 interface OptButtonProps {
-  level: OptimizationLevel;
+  level: OptLevel;
   description: string;
 }
 
@@ -289,11 +289,11 @@ function RunConfigButtons({
       >
         <Stack direction={"column"}>
           <OptButton
-            level={OptimizationLevel.Release}
+            level={OptLevel.Release}
             description="Build with optimizations."
           />
           <OptButton
-            level={OptimizationLevel.Debug}
+            level={OptLevel.Debug}
             description="Build with debug information, without optimizations."
           />
         </Stack>
