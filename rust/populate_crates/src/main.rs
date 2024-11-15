@@ -15,9 +15,7 @@ use cargo::{
         cache_lock::CacheLockMode, context::GlobalContext, interning::InternedString, VersionExt,
     },
 };
-use env_logger;
 use lazy_static::lazy_static;
-use log;
 use reqwest::blocking::get;
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -89,11 +87,11 @@ struct CargoResources<'gctx> {
 fn init_cargo_resources(ctx: &GlobalContext, invalid_cache: bool) -> Result<CargoResources> {
     // On Cargo `CacheLocker`: https://docs.rs/cargo/0.80.0/cargo/util/cache_lock/index.html
     let _lock = ctx.acquire_package_cache_lock(CacheLockMode::DownloadExclusive)?;
-    let crates_io_source = SourceId::crates_io(&ctx)?;
+    let crates_io_source = SourceId::crates_io(ctx)?;
     let yanked_whitelist = HashSet::new();
     // Get data from the the default remote `crates.io` registry
     // https://doc.rust-lang.org/cargo/reference/registries.html?search=GlobalContex
-    let mut registry_source = RegistrySource::remote(crates_io_source, &yanked_whitelist, &ctx)?;
+    let mut registry_source = RegistrySource::remote(crates_io_source, &yanked_whitelist, ctx)?;
     if invalid_cache {
         registry_source.invalidate_cache();
     }
@@ -134,7 +132,7 @@ fn fetch_top_crate_names(num_crates: usize) -> Result<Vec<String>> {
     log::info!("Total crates fetched: {}", crate_names.len());
     log::info!("Filtering top {} crates", num_crates);
     crate_names.truncate(num_crates);
-    return Ok(crate_names);
+    Ok(crate_names)
 }
 
 // Uses metadata from the `[package.metadata.playground]` table in crates `Cargo.toml`,
@@ -277,7 +275,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Properly populate `features` and `default_features` fields
     for c in crates.iter_mut() {
         let package = packages.get_one(c.package_id).unwrap();
-        if let Some((features, default_features)) = playground_metadata_features(&package) {
+        if let Some((features, default_features)) = playground_metadata_features(package) {
             c.features = features;
             c.default_features = default_features;
         } else {

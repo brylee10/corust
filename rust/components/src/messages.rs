@@ -1,6 +1,6 @@
 use crate::network::{ComponentId, CursorMap, RemoteUpdate, UserId, UserList};
 use crate::server::StateId as ServerStateId;
-use corust_types::{CargoCommand, Channel, OptLevel};
+use corust_types::{CargoCommand, Channel, CodeOutputState, OptLevel, RunnerOutput};
 use wasm_bindgen::prelude::*;
 
 use corust_transforms::xforms::{TextOperation, TextUpdate};
@@ -211,7 +211,7 @@ pub enum ServerMessage {
     Run(RunnerOutput),
     RunStatus(RunStatus),
     /// Useful to inform users of the code and execution environment.
-    RunConfig(RunConfig),
+    RunConfigAction(RunConfigAction),
     Snapshot(Snapshot),
     // Split into separate message so it is usable across snapshot, updates,
     // and pruning non-gracefully disconnected users. When paired with a snapshot
@@ -248,7 +248,7 @@ pub enum RunStateUpdate {
 /// and cargo command to execute.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
-pub enum RunConfig {
+pub enum RunConfigAction {
     RecentExecution(RunConfigExec),
     ConfigUpdate(RunConfigUpdate),
 }
@@ -258,9 +258,8 @@ pub enum RunConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all(serialize = "camelCase"))]
 pub struct RunConfigExec {
-    pub cargo_command: CargoCommand,
-    pub channel: Channel,
-    pub opt_level: OptLevel,
+    #[serde(flatten)]
+    pub run_config: RunConfig,
     pub code: String,
     /// User who requested the run
     pub username: String,
@@ -271,29 +270,45 @@ pub struct RunConfigExec {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all(serialize = "camelCase"))]
 pub struct RunConfigUpdate {
-    pub cargo_command: CargoCommand,
-    pub channel: Channel,
-    pub opt_level: OptLevel,
+    #[serde(flatten)]
+    pub run_config: RunConfig,
     /// User who updated the run configuration
     pub username: String,
 }
 
+/// Represents an execution configuration. Parameterizes a
+/// `cargo` invocation.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RunConfig {
+    pub cargo_command: CargoCommand,
+    pub channel: Channel,
+    pub opt_level: OptLevel,
+}
+
+impl Default for RunConfig {
+    fn default() -> Self {
+        // A sensible default execution configuration
+        // `cargo +stable run --release`
+        RunConfig {
+            cargo_command: CargoCommand::Run,
+            channel: Channel::Stable,
+            opt_level: OptLevel::Release,
+        }
+    }
+}
+
 /// Message sent to late joiners to sync their document
-#[derive(Deserialize, Serialize, Clone, Debug, PartialEq, Eq)]
+#[derive(Deserialize, Serialize, Clone, Debug)]
+#[serde(rename_all = "camelCase")]
 pub struct Snapshot {
     pub source: ComponentId,
     pub dest: ComponentId,
+    /// Current document state
     pub document: String,
     pub cursor_map: CursorMap,
     pub state_id: ServerStateId,
-}
-
-// API for execution output
-#[derive(Deserialize, Serialize, Clone, Debug)]
-#[serde(rename_all = "camelCase")]
-pub struct RunnerOutput {
-    pub run_type: String,
-    pub stdout: String,
-    pub stderr: String,
-    pub exit_code: Option<i32>,
+    /// Present if the code has been executed before
+    /// Only used in live app
+    pub code_output_state: Option<CodeOutputState>,
 }

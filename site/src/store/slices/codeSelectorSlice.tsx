@@ -7,20 +7,20 @@
 import { createSlice } from "@reduxjs/toolkit";
 
 // Indicates whether the user code editor is displaying the live code
-// or the code from the most recent run.
+// or the code from the most recent execution.
 enum SelectedCodeType {
   Live = "Live",
-  RecentRun = "Recent Run",
+  LastExecution = "Last Execution",
 }
 
 const codeSelectorSlice = createSlice({
   name: "codeSelector",
   initialState: {
     type: SelectedCodeType.Live,
-    // Whether `recentRunCode` has ever been set
-    recentRunCodeSet: false,
+    // Whether `lastExecutionCode` has ever been set
+    executionCodePrevSet: false,
     // The code that was executed last
-    recentRunCode: "",
+    lastExecutionCode: "",
     // The user who executed the most recent code
     executingUser: "",
   },
@@ -28,12 +28,12 @@ const codeSelectorSlice = createSlice({
     setLive: (state) => {
       state.type = SelectedCodeType.Live;
     },
-    setRecentRun: (state) => {
-      state.type = SelectedCodeType.RecentRun;
+    setLastExecution: (state) => {
+      state.type = SelectedCodeType.LastExecution;
     },
-    setRecentRunCode: (state, action) => {
-      state.recentRunCode = action.payload;
-      state.recentRunCodeSet = true;
+    setLastExecutionCode: (state, action) => {
+      state.lastExecutionCode = action.payload;
+      state.executionCodePrevSet = true;
     },
     setExecutingUser: (state, action) => {
       state.executingUser = action.payload;
@@ -41,7 +41,11 @@ const codeSelectorSlice = createSlice({
   },
 });
 
-export const { setLive, setRecentRun, setRecentRunCode, setExecutingUser } =
-  codeSelectorSlice.actions;
+export const {
+  setLive,
+  setLastExecution,
+  setLastExecutionCode,
+  setExecutingUser,
+} = codeSelectorSlice.actions;
 export { SelectedCodeType };
 export default codeSelectorSlice.reducer;

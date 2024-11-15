@@ -7,10 +7,9 @@ use tokio::{
     task::JoinHandle,
 };
 
-use crate::{
-    container::{ContainerMessage, ContainerResponse},
-    MESSAGE_BUF_SIZE_BYTES,
-};
+use corust_types::{ContainerMessage, ContainerResponse};
+
+use crate::MESSAGE_BUF_SIZE_BYTES;
 
 #[derive(Debug, Snafu)]
 pub enum RunnerError {

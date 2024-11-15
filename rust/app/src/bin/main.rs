@@ -4,7 +4,6 @@ use std::sync::Arc;
 
 use ansi_term::Color;
 use corust_app::db::{DocumentTable, Table, UserTable};
-use dotenv;
 use env_logger::Builder;
 use log::Level;
 

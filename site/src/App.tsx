@@ -45,7 +45,7 @@ import { OptLevel, setOptLevel } from "./store/slices/optSlice.tsx";
 import { RustChannel, setChannel } from "./store/slices/channelSlice.tsx";
 import {
   setExecutingUser,
-  setRecentRunCode,
+  setLastExecutionCode,
 } from "./store/slices/codeSelectorSlice.tsx";
 
 // Interfaces/Type definitions
@@ -70,14 +70,14 @@ interface RustExecuteCommand {
 }
 
 // Describes the most recently executed code.
-type RunConfig = RecentExecutionConfig | ConfigUpdateConfig;
+type RunConfigAction = RecentExecutionConfig | ConfigUpdateConfig;
 
 interface RecentExecutionConfig {
   type: RunConfigType.RecentExecution;
   cargoCommand: CargoCommand;
   optLevel: OptLevel;
   channel: RustChannel;
-  recentRunCode: string;
+  code: string;
   // User who ran the code
   username: string;
 }
@@ -127,6 +127,35 @@ interface CodeContainerText {
   code: string;
 }
 
+enum ContainerMessageType {
+  // `cargo run/build/test` command
+  Execute = "Execute",
+  // Future
+  Clippy = "Clippy",
+}
+
+// Represents a message to execute code in the container
+type ContainerMessage = {
+  [key in ContainerMessageType]: ExecuteCommand;
+};
+
+interface CodeOutputState {
+  containerMsg: ContainerMessage;
+  runnerOutput?: RunOutput;
+}
+
+// Snapshot sent by server on user join
+interface Snapshot {
+  source: number;
+  dest: number;
+  document: String;
+  // Opaque Rust struct that does not need to be accessed
+  cursorMap: any;
+  stateId: number;
+  /// Optional - Present if the code has been executed before
+  codeOutputState?: CodeOutputState;
+}
+
 // Text selection range (start <= end)
 // Either `from === anchor && to === head` or `from === head && to === anchor`
 interface SelectionFocused {
@@ -157,13 +186,14 @@ interface AppProps {
   userId: bigint;
 }
 
-type ServerMessageType =
-  | "RemoteUpdate"
-  | "Run"
-  | "RunStatus"
-  | "RunConfig"
-  | "Snapshot"
-  | "UserList";
+enum ServerMessageType {
+  RemoteUpdate = "RemoteUpdate",
+  Run = "Run",
+  RunStatus = "RunStatus",
+  RunConfigAction = "RunConfigAction",
+  Snapshot = "Snapshot",
+  UserList = "UserList",
+}
 
 // Utilities
 const docUpdateToRust = (msg: DocUpdateWrapper): RustDocUpdate => {
@@ -313,6 +343,45 @@ function App({ userId }: AppProps) {
     setCollabSelections(newCollabSelections);
   }, []);
 
+  // Updates editor, code output, and cargo command configuration state after
+  // a snapshot message
+  const handleSnapshot = useCallback(
+    (snapshot: Snapshot) => {
+      console.debug("Handling snapshot: ", snapshot);
+      const runnerOutput = snapshot.codeOutputState?.runnerOutput ?? null;
+      if (runnerOutput !== null) {
+        // Prior cargo execution exists, show the cargo output
+        setShowCargoOutput(true);
+        // But do not open the `Output` panel to reduce visual clutter on join
+        setCargoOutputOpen(false);
+        setRunOutput(runnerOutput);
+      }
+
+      const containerMsg = snapshot.codeOutputState?.containerMsg ?? null;
+      if (containerMsg !== null) {
+        // Update the cargo command configuration
+        const containerMessageType = Object.keys(
+          containerMsg
+        )[0] as ContainerMessageType;
+        // If the container message is present, it should have one key
+        if (containerMessageType === undefined) {
+          console.error(
+            "Container message type is undefined for snapshot: ",
+            snapshot
+          );
+          return;
+        }
+        // The container message
+        const executeCommand = containerMsg[containerMessageType];
+        dispatch(setCargoCommand(executeCommand.cargoCommand));
+        dispatch(setOptLevel(executeCommand.optLevel));
+        dispatch(setChannel(executeCommand.channel));
+        dispatch(setLastExecutionCode(executeCommand.code));
+      }
+    },
+    [dispatch]
+  );
+
   useEffect(() => {
     // Requires a CodeMirror view for the transaction dispatch to target
     if (view) {
@@ -368,6 +437,10 @@ function App({ userId }: AppProps) {
                 // Always update code container. This should not change the code container if the update is an ack to a local operation.
                 updateCollabSelections(clientRef.current);
                 setCodeContainerText({ code: clientRef.current.document() });
+
+                if (serverMsgType === ServerMessageType.Snapshot) {
+                  handleSnapshot(serverMessageObj[serverMsgType] as Snapshot);
+                }
 
                 if (clientResponse) {
                   const updateType: ClientResponseType =
@@ -456,21 +529,23 @@ function App({ userId }: AppProps) {
               // is sufficient and preferrable over toggling in the `Run` message handler.
               setShowCargoOutput(true);
               break;
-            case "RunConfig":
-              const runConfig: RunConfig = serverMessageObj[serverMsgType];
-              const runConfigType = runConfig.type;
-              const channel = runConfig.channel;
-              const optLevel = runConfig.optLevel;
-              const cargoCommand = runConfig.cargoCommand;
+            case "RunConfigAction":
+              const runConfigAction: RunConfigAction =
+                serverMessageObj[serverMsgType];
+              const runConfigType = runConfigAction.type;
+              const channel = runConfigAction.channel;
+              const optLevel = runConfigAction.optLevel;
+              const cargoCommand = runConfigAction.cargoCommand;
 
               dispatch(setChannel(channel));
               dispatch(setOptLevel(optLevel));
               dispatch(setCargoCommand(cargoCommand));
 
+              console.debug("Received run config message: ", runConfigAction);
               if (runConfigType === RunConfigType.RecentExecution) {
-                const recentRunCode = runConfig.recentRunCode;
-                const executingUser = runConfig.username;
-                dispatch(setRecentRunCode(recentRunCode));
+                const lastExecutionCode = runConfigAction.code;
+                const executingUser = runConfigAction.username;
+                dispatch(setLastExecutionCode(lastExecutionCode));
                 dispatch(setExecutingUser(executingUser));
                 // Enqueue an info snackbar
                 console.debug("Enqueueing snackbar");
@@ -550,6 +625,7 @@ function App({ userId }: AppProps) {
     view,
     updateCollabSelections,
     dispatch,
+    handleSnapshot,
   ]);
 
   // Sends a stringified object to the server
@@ -578,6 +654,7 @@ function App({ userId }: AppProps) {
   }, [wsSend]);
 
   useEffect(() => {
+    console.debug("Setting client ref");
     clientRef.current = client;
   }, [client]);
 
@@ -611,6 +688,7 @@ function App({ userId }: AppProps) {
 
   const handleEditorChange = useCallback(
     (viewUpdate: ViewUpdate) => {
+      console.log("View update: ", viewUpdate);
       // Handle cursor updates and doc updates
       if (viewUpdate.selectionSet || viewUpdate.docChanged) {
         // Log transactions for view update
@@ -738,6 +816,7 @@ function App({ userId }: AppProps) {
         RunButton={RunButton({
           runStatus,
           setShowCargoOutput,
+          setCargoOutputOpen,
           executeCode,
         })}
         RunConfigButtons={RunConfigButtons({

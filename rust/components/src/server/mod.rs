@@ -413,6 +413,7 @@ impl Component for ServerNetwork {
             document: current_doc_state.document().to_string(),
             cursor_map: current_doc_state.cursor_map().clone(),
             state_id: self.current_state_id,
+            code_output_state: None,
         };
 
         // Username and color are not assigned for the testing network

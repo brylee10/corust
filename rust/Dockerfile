@@ -47,6 +47,8 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- \
 
 # Install the `runner` binary which copies user code into the container and runs it 
 COPY --chown=corust sandbox /sandbox
+# Copy `corust-types` dependency
+COPY --chown=corust types /types
 RUN cargo install --path /sandbox
 COPY --chown=corust entrypoint.sh /corust/tools/
 # Make the entrypoint script executable

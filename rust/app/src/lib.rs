@@ -4,8 +4,7 @@ use warp::Filter;
 
 pub mod db;
 pub mod execute;
-pub mod messages;
-
+pub mod response_codes;
 pub mod sessions;
 pub mod users;
 pub mod websocket;

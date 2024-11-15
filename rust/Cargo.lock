@@ -619,6 +619,7 @@ dependencies = [
  "fnv",
  "futures-util",
  "log",
+ "parking_lot",
  "rand",
  "random_color",
  "rusqlite",

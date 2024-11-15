@@ -2,7 +2,6 @@
 //! Inspiration taken from Rust Playground `coordinator.rs`.
 
 use std::{
-    fmt::{Display, Formatter},
     process::Stdio,
     sync::{
         atomic::{AtomicBool, Ordering},
@@ -11,9 +10,11 @@ use std::{
 };
 
 use chrono::Utc;
-use corust_types::{CargoCommand, Channel, OptLevel, TargetType};
+use corust_types::{
+    CargoCommand, Channel, ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse,
+    OptLevel,
+};
 use enumset::{EnumSet, EnumSetType};
-use serde::{Deserialize, Serialize};
 use snafu::{OptionExt, ResultExt, Snafu};
 use tokio::{
     io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
@@ -82,120 +83,6 @@ pub enum ContainerError {
 }
 
 type Result<T, E = ContainerError> = std::result::Result<T, E>;
-
-impl From<&ExecuteCommand> for Command {
-    fn from(execute_command: &ExecuteCommand) -> Self {
-        let mut command = Command::new("cargo");
-        match &execute_command.channel {
-            Channel::Stable => command.arg("+stable"),
-            Channel::Beta => command.arg("+beta"),
-            Channel::Nightly => command.arg("+nightly"),
-        };
-        match &execute_command.cargo_command {
-            CargoCommand::Build => command.arg("build"),
-            CargoCommand::Run => command.arg("run"),
-            CargoCommand::Test => command.arg("test"),
-            CargoCommand::Clippy => command.arg("clippy"),
-        };
-        match &execute_command.opt_level {
-            OptLevel::Debug => &mut command,
-            OptLevel::Release => command.arg("--release"),
-        };
-        command
-    }
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ExecuteCommand {
-    pub code: String,
-    pub target_type: TargetType,
-    pub cargo_command: CargoCommand,
-    pub opt_level: OptLevel,
-    pub channel: Channel,
-}
-
-impl ExecuteCommand {
-    pub fn new(
-        code: String,
-        target_type: TargetType,
-        cargo_command: CargoCommand,
-        opt_level: OptLevel,
-        channel: Channel,
-    ) -> Self {
-        ExecuteCommand {
-            code,
-            target_type,
-            cargo_command,
-            opt_level,
-            channel,
-        }
-    }
-}
-
-/// Represents a message sent to the container to execute code
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub enum ContainerMessage {
-    Execute(ExecuteCommand),
-}
-
-// `ContainerMessage` represents a code execution, so all `ContainerMessage` should share these features
-impl ContainerMessage {
-    pub fn channel(&self) -> Channel {
-        match self {
-            ContainerMessage::Execute(execute_command) => execute_command.channel,
-        }
-    }
-
-    pub fn cargo_command(&self) -> CargoCommand {
-        match self {
-            ContainerMessage::Execute(execute_command) => execute_command.cargo_command,
-        }
-    }
-
-    pub fn opt_level(&self) -> OptLevel {
-        match self {
-            ContainerMessage::Execute(execute_command) => execute_command.opt_level,
-        }
-    }
-
-    pub fn code(&self) -> &str {
-        match self {
-            ContainerMessage::Execute(execute_command) => &execute_command.code,
-        }
-    }
-}
-
-// Mirrors `std::process::Output`
-// Implements `Default` to send a clear responses at the start of all executions.
-// All executions start with empty stdout and stderr, clearing output from prior runs.
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct ExecuteResponse {
-    /// Fields which are updated as the code is executed
-    pub stdout: Vec<u8>,
-    pub stderr: Vec<u8>,
-    pub exit_code: Option<i32>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-pub enum ContainerResponse {
-    Execute(ExecuteResponse),
-}
-
-impl Display for ContainerResponse {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            ContainerResponse::Execute(response) => {
-                writeln!(f, "Execute response")?;
-                // Convert bytes to string
-                writeln!(f, "stdout: {}", String::from_utf8_lossy(&response.stdout))?;
-                writeln!(f, "stderr: {}", String::from_utf8_lossy(&response.stderr))?;
-                writeln!(f, "exit code: {:?}", response.exit_code)?;
-            }
-        }
-        Ok(())
-    }
-}
 
 /// A backend run creates a [`tokio::process::Command`] and runs it,
 /// providing handles to the IO file handles.
@@ -463,8 +350,9 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
                 });
             }
 
+            log::debug!("Deserializing message from stdout");
             let msg = bincode::deserialize(&msg_buf).context(BincodeSnafu)?;
-            log::trace!(
+            log::debug!(
                 "Received message of size {:?} bytes from stdout, msg: {}",
                 msg_sz_bytes,
                 msg
@@ -498,7 +386,7 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
     tasks.spawn(async move {
         let mut stdin = BufWriter::new(stdin);
         while let Some(msg) = child_stdin_rx.recv().await {
-            log::trace!("Received message `msg` in stdin receiver: {:?}", msg);
+            log::debug!("Received message `msg` in stdin receiver: {:?}", msg);
             // Serialize message into buffer, with a 4 byte prefix for the size of the message
             // as required by `AsyncBincodeReader`:
             // https://docs.rs/async-bincode/latest/async_bincode/futures/struct.AsyncBincodeReader.html
@@ -540,6 +428,28 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
     })
 }
 
+/// Converts an `ExecuteCommand` to a `Command` to be run by `cargo`.
+/// Not implemented as `From` trait due to orphan rules.
+pub fn execute_command_to_command(execute_command: &ExecuteCommand) -> Command {
+    let mut command = Command::new("cargo");
+    match &execute_command.channel {
+        Channel::Stable => command.arg("+stable"),
+        Channel::Beta => command.arg("+beta"),
+        Channel::Nightly => command.arg("+nightly"),
+    };
+    match &execute_command.cargo_command {
+        CargoCommand::Build => command.arg("build"),
+        CargoCommand::Run => command.arg("run"),
+        CargoCommand::Test => command.arg("test"),
+        CargoCommand::Clippy => command.arg("clippy"),
+    };
+    match &execute_command.opt_level {
+        OptLevel::Debug => &mut command,
+        OptLevel::Release => command.arg("--release"),
+    };
+    command
+}
+
 #[cfg(test)]
 mod test {
     use std::future::Future;
@@ -547,6 +457,7 @@ mod test {
 
     use assertables::assert_contains;
     use assertables::assert_contains_as_result;
+    use corust_types::{CargoCommand, ExecuteCommand, OptLevel, TargetType};
     use env_logger::Target;
     use tempfile::{tempdir, TempDir};
 

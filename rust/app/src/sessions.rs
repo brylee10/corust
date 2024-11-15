@@ -4,16 +4,16 @@
 //! [`SharedServer`] which is a [`Server`] which manages user states and
 //! historical document states for the session.
 
+use parking_lot::RwLock as BlockingRwLock;
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use corust_components::{
     network::UserId,
     server::{DocumentState, Server},
-    ServerMessage,
+    RunConfig, ServerMessage,
 };
-use corust_types::CargoCommand;
-use dashmap::DashMap;
-use fnv::FnvHashMap;
+use corust_types::{execution::CargoCommandType, CodeOutputState};
+use dashmap::{mapref::one::RefMut, DashMap};
 use tokio::sync::{
     broadcast::{channel, Sender},
     RwLock,
@@ -21,7 +21,7 @@ use tokio::sync::{
 
 use crate::{
     db::{DocumentTable, DocumentTableKey, Table, UserTable, UserTableKey},
-    execute::runner::{CodeOutputState, ConcurrentRunChecker, SharedConcurrentRunChecker},
+    execute::runner::{ConcurrentRunChecker, SharedConcurrentRunChecker},
     websocket::PING_INTERVAL_SEC,
 };
 
@@ -110,8 +110,9 @@ pub struct Session {
     session_id: SessionId,
     server: SharedServer,
     bcast_tx: Sender<ServerMessage>,
-    _code_output_state: FnvHashMap<CargoCommand, CodeOutputState>,
+    code_output: DashMap<CargoCommandType, CodeOutputState>,
     concurrent_run_checker: SharedConcurrentRunChecker,
+    run_config: BlockingRwLock<RunConfig>,
 }
 
 impl Session {
@@ -135,8 +136,9 @@ impl Session {
             session_id,
             server,
             bcast_tx,
-            _code_output_state: FnvHashMap::default(),
+            code_output: DashMap::default(),
             concurrent_run_checker: Arc::new(ConcurrentRunChecker::new()),
+            run_config: BlockingRwLock::new(RunConfig::default()),
         }
     }
 
@@ -149,8 +151,9 @@ impl Session {
             session_id,
             server,
             bcast_tx,
-            _code_output_state: FnvHashMap::default(),
+            code_output: DashMap::default(),
             concurrent_run_checker: Arc::new(ConcurrentRunChecker::new()),
+            run_config: BlockingRwLock::new(RunConfig::default()),
         }
     }
 
@@ -168,6 +171,38 @@ impl Session {
 
     pub fn session_id(&self) -> SessionId {
         self.session_id.clone()
+    }
+
+    /// Returns an owned copy of the current code output state for a command type.
+    pub fn code_output_state(&self, command_type: &CargoCommandType) -> Option<CodeOutputState> {
+        self.code_output
+            .get(command_type)
+            .map(|el| el.value().clone())
+    }
+
+    pub fn code_output_state_mut(
+        &self,
+        command_type: &CargoCommandType,
+    ) -> Option<RefMut<'_, CargoCommandType, CodeOutputState>> {
+        self.code_output.get_mut(command_type)
+    }
+
+    pub fn set_code_output_state(
+        &self,
+        command_type: CargoCommandType,
+        code_output_state: CodeOutputState,
+    ) {
+        self.code_output.insert(command_type, code_output_state);
+    }
+
+    pub fn run_config(&self) -> RunConfig {
+        // The blocking lock call is short lived
+        self.run_config.read().clone()
+    }
+
+    pub fn set_run_config(&self, run_config: RunConfig) {
+        // The blocking lock call is short lived
+        *self.run_config.write() = run_config;
     }
 }
 

@@ -1,40 +1,11 @@
-use std::fmt::{Display, Formatter};
+//! Fundamental execution configuration and message types, shared by both
+//! the `corust_components` and `corust_runner` crates.
 
-use serde::{Deserialize, Serialize};
+pub use container::{ContainerMessage, ContainerResponse};
+pub use execution::{
+    CargoCommand, Channel, CodeOutputState, ExecuteCommand, ExecuteResponse, OptLevel,
+    RunnerOutput, TargetType,
+};
 
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum TargetType {
-    Library,
-    Binary,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum CargoCommand {
-    Build,
-    Run,
-    Test,
-    Clippy,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum OptLevel {
-    Debug,
-    Release,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy)]
-pub enum Channel {
-    Stable,
-    Beta,
-    Nightly,
-}
-
-impl Display for Channel {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Channel::Stable => write!(f, "stable"),
-            Channel::Beta => write!(f, "beta"),
-            Channel::Nightly => write!(f, "nightly"),
-        }
-    }
-}
+pub mod container;
+pub mod execution;

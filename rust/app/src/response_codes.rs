@@ -1,3 +1,5 @@
+//! HTTP response codes.
+
 use serde::Serialize;
 
 use warp::http::StatusCode;

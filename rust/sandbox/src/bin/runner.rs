@@ -1,16 +1,16 @@
 // Inspiration taken from Rust Playground `worker.rs`:
 // https://github.com/rust-lang/rust-playground/blob/main/compiler/base/orchestrator/src/worker.rs
 
-use corust_sandbox::container::{
-    ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse, IO_COMPONENT_CHANNEL_SIZE,
-};
+use corust_sandbox::container::{execute_command_to_command, IO_COMPONENT_CHANNEL_SIZE};
 use corust_sandbox::init_logger;
 use corust_sandbox::runner::{
     create_runner_io_component, JoinTaskSnafu, ReadStdoutSnafu, Result, RunnerError,
     RunnerIoComponent, SendResponseSnafu, SpawnChildSnafu, StderrCaptureSnafu, StdoutCaptureSnafu,
     WaitChildSnafu, WriteCodeSnafu,
 };
-use corust_types::TargetType;
+use corust_types::{
+    ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse, TargetType,
+};
 use env_logger::Target;
 use snafu::{OptionExt, ResultExt};
 use std::fs;
@@ -85,8 +85,9 @@ async fn listen<P: AsRef<Path>>(
         Ok::<(), RunnerError>(())
     };
 
-    // // Waits for writing to stdout to finish and stdin rx to close
+    // Waits for writing to stdout to finish and stdin rx to close
     let (stdout_res, stdin_res) = join!(stdout_handle, handle_stdin_rx);
+    // `stdout_res` is a `Result` of `Result`
     stdout_res.context(JoinTaskSnafu)??;
     stdin_res?;
     // No longer receive messages from stdin because stdin_rx is closed
@@ -106,7 +107,7 @@ async fn handle_execute_cmd<P: AsRef<Path>>(
     stdout_tx: Sender<ContainerResponse>,
 ) -> Result<()> {
     let project_dir = project_dir.as_ref();
-    let mut cmd: Command = (&command).into();
+    let mut cmd: Command = execute_command_to_command(&command);
 
     let ExecuteCommand {
         code, target_type, ..

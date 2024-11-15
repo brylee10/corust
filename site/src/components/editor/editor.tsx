@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import "../../App.css"; // Ensure to import the CSS file
 import CodeMirror, {
   ViewUpdate,
@@ -16,13 +16,22 @@ import {
   SelectionRange,
   UserSelectionRange,
 } from "../../App.tsx";
-import { Button, Stack, styled, useTheme } from "@mui/material";
+import {
+  Alert,
+  Button,
+  Grow,
+  Snackbar,
+  Stack,
+  styled,
+  Tooltip,
+  useTheme,
+} from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../../store/store.tsx";
 import {
   SelectedCodeType,
   setLive,
-  setRecentRun,
+  setLastExecution,
 } from "../../store/slices/codeSelectorSlice.tsx";
 
 interface CodeSelectorProps {
@@ -73,9 +82,16 @@ function Editor({
 }: EditorProps) {
   const theme = useTheme();
   const dispatch = useDispatch();
-  const codeSelector = useSelector(
+  const codeTypeSelector = useSelector(
     (state: RootState) => state.codeSelector.type
   );
+  const prevExecutedSelector = useSelector(
+    (state: RootState) => state.codeSelector.executionCodePrevSet
+  );
+  const lastExecutedCode = useSelector(
+    (state: RootState) => state.codeSelector.lastExecutionCode
+  );
+  const [openPrevCodeWarning, setOpenPrevCodeWarning] = useState(false);
 
   const isSelectionFocused = useCallback(
     (sel: SelectionRange): sel is SelectionFocused => {
@@ -160,6 +176,14 @@ function Editor({
   const rustTheme = useMemo(
     () =>
       EditorView.theme({
+        // Targets editor root, `cm-editor`
+        "&": {
+          fontFamily: '"Source Code Pro", monospace',
+          fontSize: "1rem",
+          borderRadius: theme.spacing(0.75),
+          borderBottomLeftRadius: "0px",
+          border: `1px solid #CEA6A0`,
+        },
         ".cm-activeLine": {
           // Darker rust for the active line
           backgroundColor: "#CEA6A044",
@@ -170,9 +194,40 @@ function Editor({
         ".cm-gutters": {
           // Light rust for gutters
           backgroundColor: "#FEFAF9",
+          borderTopLeftRadius: theme.spacing(0.75),
         },
       }),
-    []
+    [theme]
+  );
+
+  const readOnlyTheme = useMemo(
+    () =>
+      EditorView.theme({
+        "&": {
+          fontFamily: '"Source Code Pro", monospace',
+          fontSize: "1rem",
+          borderRadius: theme.spacing(0.75),
+          borderBottomLeftRadius: "0px",
+          border: `1px solid #CEA6A0`,
+        },
+        ".cm-content": {
+          // Light grey representing read-only
+          backgroundColor: "#EEEEEE80",
+        },
+        ".cm-activeLine": {
+          // No active line highlighting
+          backgroundColor: "transparent",
+        },
+        ".cm-activeLineGutter": {
+          backgroundColor: "transparent",
+        },
+        ".cm-gutters": {
+          // Light rust for gutters
+          backgroundColor: "#FEFAF9",
+          borderTopLeftRadius: theme.spacing(0.75),
+        },
+      }),
+    [theme]
   );
 
   const extraCursorsPlugin = useMemo(() => {
@@ -324,11 +379,11 @@ function Editor({
   ]);
 
   const renderCodeSelectorButtons = useCallback(() => {
-    if (codeSelector === SelectedCodeType.Live) {
-      return (
-        <>
+    return (
+      <>
+        <Tooltip title="Show live code editor">
           <CodeSelector
-            selected={true}
+            selected={codeTypeSelector === SelectedCodeType.Live}
             onClick={() => dispatch(setLive())}
             sx={{
               borderRadius: "0px",
@@ -337,49 +392,40 @@ function Editor({
           >
             Live
           </CodeSelector>
+        </Tooltip>
+        <Tooltip title="Show code that was most recently executed (read only)">
           <CodeSelector
-            selected={false}
-            onClick={() => dispatch(setRecentRun())}
+            selected={codeTypeSelector === SelectedCodeType.LastExecution}
+            onClick={() => {
+              if (!prevExecutedSelector) {
+                setOpenPrevCodeWarning(true);
+              }
+              dispatch(setLastExecution());
+            }}
             sx={{
               borderRadius: "0px",
               borderBottomRightRadius: "5px",
             }}
           >
-            Recent Run
+            Last Execution
           </CodeSelector>
-        </>
-      );
-    } else {
-      return (
-        <>
-          <CodeSelector
-            selected={false}
-            onClick={() => dispatch(setLive())}
-            sx={{
-              borderRadius: "0px",
-              borderBottomLeftRadius: "5px",
-            }}
-          >
-            Live
-          </CodeSelector>
-          <CodeSelector
-            selected={true}
-            onClick={() => dispatch(setRecentRun())}
-            sx={{
-              borderRadius: "0px",
-              borderBottomRightRadius: "5px",
-            }}
-          >
-            Recent Run
-          </CodeSelector>
-        </>
-      );
-    }
-  }, [codeSelector, dispatch]);
+        </Tooltip>
+      </>
+    );
+  }, [codeTypeSelector, dispatch, prevExecutedSelector]);
 
-  return (
-    <Stack direction="column" sx={{ width: "100%", height: "100%", pb: 100 }}>
+  const renderEditor = useCallback(() => {
+    // Special value of "nocursor" instead of `true` makes the editor unfocuasable
+    const readOnly = codeTypeSelector === SelectedCodeType.LastExecution;
+    // Keeps both components mounted but only one visible at a time.
+    // This is necessary to keep the editor state when switching between live and read only.
+    // Otherwise, the liver editor mount causes side effects, such as creating a new ws connection.
+    // The alternative is to unmount the editor when switching between live and read only by setting the
+    // `key` prop. Although the editors would lose state, the new ws connection would trigger a snapshot
+    // which would restore the live editor state.
+    const liveEditor = (
       <CodeMirror
+        id="live-editor"
         className="editor"
         height="100%"
         extensions={[rust(), extraCursorsPlugin, rustTheme]}
@@ -388,17 +434,68 @@ function Editor({
           setView(view);
         }}
         style={{
-          fontFamily: '"Source Code Pro", monospace',
-          fontSize: "1rem",
-          borderRadius: "5px",
-          borderBottomLeftRadius: "0px",
-          border: `1px solid #CEA6A0`,
           marginTop: theme.spacing(1.5),
           flex: 1,
-          overflow: "auto", // Add scrollbars when content overflows
+          display: readOnly ? "none" : "block",
+          // Add scrollbars when content overflows
+          overflow: "auto",
         }}
+        editable={true}
+        readOnly={false}
       />
+    );
+    const readOnlyEditor = (
+      <CodeMirror
+        id="read-only-editor"
+        value={lastExecutedCode}
+        className="editor"
+        height="100%"
+        // Remove rust syntax highlighting to make it visually apparent
+        // that the editor is read only
+        extensions={[readOnlyTheme]}
+        style={{
+          marginTop: theme.spacing(1.5),
+          flex: 1,
+          display: readOnly ? "block" : "none",
+          // Add scrollbars when content overflows
+          overflow: "auto",
+        }}
+        editable={false}
+        readOnly={true}
+      />
+    );
+    return (
+      <>
+        {liveEditor}
+        {readOnlyEditor}
+      </>
+    );
+  }, [
+    extraCursorsPlugin,
+    setView,
+    theme,
+    codeTypeSelector,
+    rustTheme,
+    lastExecutedCode,
+    readOnlyTheme,
+  ]);
+
+  return (
+    <Stack direction="column" sx={{ width: "100%", height: "100%", pb: 100 }}>
+      {renderEditor()}
       <Stack direction="row">{renderCodeSelectorButtons()}</Stack>
+      <Snackbar
+        open={openPrevCodeWarning}
+        autoHideDuration={10000}
+        TransitionComponent={Grow}
+        onClose={() => setOpenPrevCodeWarning(false)}
+        anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
+      >
+        <Alert severity="info">
+          No code has been executed before so the "Last Execution" panel is
+          empty. Run some code to see it here.
+        </Alert>
+      </Snackbar>
     </Stack>
   );
 }

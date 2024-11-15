@@ -84,6 +84,7 @@ interface CargoCommandButtonProps {
 interface RunButtonProps {
   runStatus: RunStatus | null;
   setShowCargoOutput: (show: boolean) => void;
+  setCargoOutputOpen: (show: boolean) => void;
   executeCode: () => void;
 }
 
@@ -91,6 +92,7 @@ interface RunButtonProps {
 function RunButton({
   runStatus,
   setShowCargoOutput,
+  setCargoOutputOpen,
   executeCode,
 }: RunButtonProps) {
   const dispatch = useDispatch();
@@ -169,6 +171,7 @@ function RunButton({
               size="small"
               onClick={() => {
                 setShowCargoOutput(true);
+                setCargoOutputOpen(true);
                 executeCode();
               }}
               endIcon={<PlayArrowIcon />}
@@ -257,6 +260,7 @@ function RunButton({
     executeCode,
     handleCargoCommandPopoverOpen,
     buttonTextMap,
+    setCargoOutputOpen,
   ]);
 
   return renderRunButton();

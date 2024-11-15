@@ -20,6 +20,7 @@ env_logger                  = "0.11"
 fnv                         = "1.0"
 futures-util                = "0.3"
 log                         = "0.4"
+parking_lot                 = "0.12"
 rand                        = "0.8"
 random_color                = "0.8"
 serde                       = { version = "1.0", features = ["derive"] } 

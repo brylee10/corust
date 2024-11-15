@@ -4,7 +4,9 @@ use std::sync::Arc;
 use corust_components::network::{UserId, UserList};
 use corust_components::server::ServerError;
 use corust_components::BroadcastLocalDocUpdate;
-use corust_sandbox::container::{ContainerError, ContainerMessage, ExecuteCommand};
+use corust_sandbox::container::ContainerError;
+use corust_types::execution::CargoCommandType;
+use corust_types::{CodeOutputState, ContainerMessage, ExecuteCommand};
 use futures_util::stream::{SplitSink, SplitStream, StreamExt};
 use futures_util::SinkExt;
 use serde::{Deserialize, Serialize};
@@ -95,11 +97,22 @@ pub(crate) async fn handle_websocket(
         .to_string();
 
     // Sync the late joiner with the current server doc state
-    send_snapshot(Arc::clone(&server), &mut ws_tx).await;
+    // Snapshot does not send current run config because it is
+    // sent in the code output state.
+    // Note: Currently assumes only one type of execution output
+    send_snapshot(
+        Arc::clone(&server),
+        session.code_output_state(&CargoCommandType::Execute),
+        &mut ws_tx,
+    )
+    .await;
 
     // User Update 1: On join, broadcast new user list
     {
-        if let Err(_) = broadcast_user_list(bcast_tx.clone(), Arc::clone(&server)).await {
+        if broadcast_user_list(bcast_tx.clone(), Arc::clone(&server))
+            .await
+            .is_err()
+        {
             return;
         }
     }
@@ -140,6 +153,7 @@ async fn broadcast_user_list<'a>(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_messages(
     session: SharedSession,
     server: SharedServer,
@@ -199,6 +213,7 @@ async fn handle_messages(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_ws_message(
     next: Option<Result<Message, warp::Error>>,
     server: SharedServer,
@@ -362,7 +377,6 @@ async fn forward_broadcast_message(
     msg: Result<ServerMessage, tokio::sync::broadcast::error::RecvError>,
     shared_ws_tx: SharedWsSender,
 ) -> Result<(), WebSocketError> {
-    log::error!("Received broadcast message from server: {:?}", msg);
     match msg {
         Ok(msg) => {
             let msg = serde_json::to_string(&msg)
@@ -430,13 +444,19 @@ async fn handle_execution(
     let (container_response_tx, mut container_response_rx) =
         mpsc::channel(CONTAINER_RESPONSE_MSG_LIMIT);
 
+    let code_output_state = CodeOutputState {
+        container_msg: container_msg.clone(),
+        runner_output: None,
+    };
+
     // Not spawn blocking because the executing container is eventually spawned as a child process
     let handle = tokio::spawn({
         let bcast_tx = bcast_tx.clone();
+        let session = Arc::clone(&session);
         async move {
             run_code(
                 container_msg,
-                Arc::clone(&session),
+                session,
                 Arc::clone(&container_factory),
                 container_response_tx,
                 bcast_tx,
@@ -446,8 +466,16 @@ async fn handle_execution(
         }
     });
 
+    session.set_code_output_state(CargoCommandType::Execute, code_output_state);
     while let Some(container_response) = container_response_rx.recv().await {
         let runner_output = container_response_to_runner_output(&container_response);
+        // `handle_execution` only handles `Execute` commands
+        // unwrap: `Execute` command was just added above to the code output state
+        let mut code_output_state = session
+            .code_output_state_mut(&CargoCommandType::Execute)
+            .unwrap();
+        // Note: This requires repeatedly copying the `RunnerOutput` which may be inefficient
+        code_output_state.runner_output = Some(runner_output.clone());
         let msg = ServerMessage::Run(runner_output);
         log::debug!("Sending run output to clients");
         log::trace!("{msg:?}");
@@ -459,6 +487,7 @@ async fn handle_execution(
             break;
         }
     }
+
     // This should exit immediately since the container response channel is closed
     log::debug!("Waiting for task execution to complete");
     match handle.await.unwrap() {
@@ -522,7 +551,11 @@ async fn ws_mark_remove_inactive_users(
     RemoveUsersRet::Continue
 }
 
-async fn send_snapshot(server: SharedServer, ws_tx: &mut SplitSink<WebSocket, Message>) {
+async fn send_snapshot(
+    server: SharedServer,
+    code_output_state: Option<CodeOutputState>,
+    ws_tx: &mut SplitSink<WebSocket, Message>,
+) {
     let server = server.read().await;
     let snapshot = Snapshot {
         // ID fields currently not used in live implementation
@@ -531,6 +564,7 @@ async fn send_snapshot(server: SharedServer, ws_tx: &mut SplitSink<WebSocket, Me
         document: server.current_document_state().document().to_string(),
         cursor_map: server.current_document_state().cursor_map().clone(),
         state_id: server.current_state_id(),
+        code_output_state,
     };
     // User Update 4: On join, send new user the UserList
     let user_list = UserList::new(server.active_users());

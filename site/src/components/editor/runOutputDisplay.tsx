@@ -254,7 +254,7 @@ function RunOutputDisplay({
 
   const renderClosedOutput = useCallback(() => {
     return (
-      <Tooltip title="Open Output">
+      <Tooltip title="Open output from last execution">
         <RunnerOutput
           open={open}
           isNarrowScreen={isNarrowScreen}

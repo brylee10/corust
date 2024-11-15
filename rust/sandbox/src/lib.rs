@@ -32,6 +32,7 @@ pub fn init_logger(target: Target) {
                 record.args()
             )
         })
+        .filter_level(log::LevelFilter::Debug)
         .target(target)
         .init();
 }

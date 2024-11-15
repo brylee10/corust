@@ -7,15 +7,12 @@ use std::{
 };
 
 use corust_components::{
-    RunConfig, RunConfigExec, RunStateUpdate, RunStatus, RunnerOutput, ServerMessage,
+    RunConfig, RunConfigAction, RunConfigExec, RunStateUpdate, RunStatus, ServerMessage,
 };
-use corust_sandbox::container::{
-    ContainerError, ContainerFactory, ContainerMessage, ContainerResponse, ContainerRunRet,
-    ExecuteResponse,
-};
+use corust_sandbox::container::{ContainerError, ContainerFactory, ContainerRunRet};
+use corust_types::{ContainerMessage, ContainerResponse, ExecuteResponse, RunnerOutput};
 use fnv::FnvHashMap;
 use futures_util::SinkExt;
-use serde::{Deserialize, Serialize};
 use strum::{Display, IntoEnumIterator};
 use strum::{EnumIter, EnumString};
 use thiserror::Error;
@@ -44,13 +41,6 @@ pub enum RunCodeError {
     ConcurrentCompilation(RunType),
     #[error(transparent)]
     JoinError(#[from] tokio::task::JoinError),
-}
-
-// Server side in memory storage of most recent code and run output for one session
-#[derive(Deserialize, Serialize, Clone, Debug)]
-pub struct CodeOutputState {
-    pub container_msg: ContainerMessage,
-    pub runner_output: Option<RunnerOutput>,
 }
 
 /// Checks if concurrent complations of the same type are occurring. One per session.
@@ -208,14 +198,19 @@ pub(crate) async fn run_code(
     // Shared factory no longer needed
     std::mem::drop(container_factory);
 
-    // Inform other clients about run configuration
-    let run_config_msg = ServerMessage::RunConfig(RunConfig::RecentExecution(RunConfigExec {
+    // Inform other clients about run configuration change
+    let run_config = RunConfig {
         opt_level: container_msg.opt_level(),
         channel: container_msg.channel(),
         cargo_command: container_msg.cargo_command(),
-        code: container_msg.code().to_string(),
-        username,
-    }));
+    };
+    session.set_run_config(run_config.clone());
+    let run_config_msg =
+        ServerMessage::RunConfigAction(RunConfigAction::RecentExecution(RunConfigExec {
+            run_config,
+            code: container_msg.code().to_string(),
+            username,
+        }));
     if let Err(e) = bcast_tx.send(run_config_msg) {
         // Not an error, just means all receiver handles have been closed
         log::info!("All receiver handles have been closed. {e:?}");
