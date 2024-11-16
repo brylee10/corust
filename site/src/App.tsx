@@ -2,6 +2,7 @@ import React, {
   ReactElement,
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -76,6 +77,9 @@ import { UserStateDefined } from "./store/slices/userSlice.tsx";
 import { setOutputTooLargeOpen } from "./store/slices/runStatusSlice.tsx";
 
 // Interfaces/Type definitions
+
+// Rust `ServerMessage` is serialized as a string
+type ServerMessage = string;
 
 // Websocket message variants
 // Commands with a `type`, which can be deserialized by
@@ -327,21 +331,25 @@ function App({ currUser }: AppProps) {
   const [remoteAnnotationType] = useState<AnnotationType<boolean>>(
     new AnnotationType()
   );
-  // The client object should be created once per component render. It cannot be passed in as
-  // a prop and modified in place, otherwise the component would be impure.
-  const [client] = useState<Client>(
-    Client.new(currUser.userId, maxUpdatesPerMinute, maxDocSizePerMinute)
-  );
+
   // CodeMirror view
   const [view, setView] = useState<EditorView | undefined>(undefined);
+
+  // Generally the client should only be initialized once per remount, but
+  // if the current user changes, the client should be recreated
+  const client = useMemo(() => {
+    return Client.new(
+      currUser.userId,
+      maxUpdatesPerMinute,
+      maxDocSizePerMinute
+    );
+  }, [currUser.userId]);
+
   // Event listeners capture static state, so we need to use refs for indirection to the latest state
   const cargoOutputRef = useRef(runOutput);
   const codeContainerTextRef = useRef(codeContainerText);
   const clientRef = useRef(client);
   const ws = useRef<WebSocket | null>(null);
-
-  // Rust `ServerMessage` is serialized as a string
-  type ServerMessage = string;
 
   const dispatchTransaction = useCallback(
     (textUpdates: TextUpdate[]) => {
@@ -780,6 +788,7 @@ function App({ currUser }: AppProps) {
     handleSnapshot,
     enqueueCustomSnackbar,
     filteredEnqueueSnackbar,
+    updateRunStatus,
   ]);
 
   // Sends a stringified object to the server
@@ -809,13 +818,15 @@ function App({ currUser }: AppProps) {
   }, [wsSend]);
 
   useEffect(() => {
-    console.debug("Setting client ref");
     clientRef.current = client;
   }, [client]);
 
   useEffect(() => {
     const isBinary = HAS_MAIN_FUNCTION_RE.test(codeContainerText.code);
     setTargetType(isBinary ? TargetType.Binary : TargetType.Library);
+    // Could also set the cargo command automatically if `fn main` is detected,
+    // but this is confusing in collaboration where users may inadvertently change
+    // for other collaborators.
   }, [codeContainerText.code]);
 
   useEffect(() => {

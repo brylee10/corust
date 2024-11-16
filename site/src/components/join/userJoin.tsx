@@ -21,6 +21,10 @@ function UserJoin() {
   // Route params
   const params = useParams();
 
+  useEffect(() => {
+    console.debug("UserState: ", userState);
+  }, [userState]);
+
   const clientJoin = useCallback(
     async () => {
       const headers = new Headers();

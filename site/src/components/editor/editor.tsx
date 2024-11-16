@@ -8,6 +8,7 @@ import CodeMirror, {
   EditorView,
   Range,
   DecorationSet,
+  BasicSetupOptions,
 } from "@uiw/react-codemirror";
 import { rust } from "@codemirror/lang-rust";
 import { UserInner } from "corust-components/corust_components.js";
@@ -92,6 +93,13 @@ function Editor({
     (state: RootState) => state.codeSelector.lastExecutionCode
   );
   const [openPrevCodeWarning, setOpenPrevCodeWarning] = useState(false);
+
+  const liveEditorOptions: BasicSetupOptions = { tabSize: 4 };
+  const readOnlyEditorOptions: BasicSetupOptions = {
+    tabSize: 4,
+    highlightActiveLine: false,
+    highlightActiveLineGutter: false,
+  };
 
   const isSelectionFocused = useCallback(
     (sel: SelectionRange): sel is SelectionFocused => {
@@ -213,13 +221,6 @@ function Editor({
         ".cm-content": {
           // Light grey representing read-only
           backgroundColor: "#EEEEEE80",
-        },
-        ".cm-activeLine": {
-          // No active line highlighting
-          backgroundColor: "transparent",
-        },
-        ".cm-activeLineGutter": {
-          backgroundColor: "transparent",
         },
         ".cm-gutters": {
           // Light rust for gutters
@@ -440,6 +441,7 @@ function Editor({
           // Add scrollbars when content overflows
           overflow: "auto",
         }}
+        basicSetup={liveEditorOptions}
         editable={true}
         readOnly={false}
       />
@@ -460,6 +462,7 @@ function Editor({
           // Add scrollbars when content overflows
           overflow: "auto",
         }}
+        basicSetup={readOnlyEditorOptions}
         editable={false}
         readOnly={true}
       />
@@ -478,6 +481,7 @@ function Editor({
     rustTheme,
     lastExecutedCode,
     readOnlyTheme,
+    handleEditorChange,
   ]);
 
   return (

@@ -288,9 +288,9 @@ pub struct RunConfig {
 impl Default for RunConfig {
     fn default() -> Self {
         // A sensible default execution configuration
-        // `cargo +stable build --release`
+        // `cargo +stable run --release`
         RunConfig {
-            cargo_command: CargoCommand::Build,
+            cargo_command: CargoCommand::Run,
             channel: Channel::Stable,
             opt_level: OptLevel::Release,
         }

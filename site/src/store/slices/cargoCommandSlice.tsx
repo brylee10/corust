@@ -20,7 +20,7 @@ interface CargoCommandState {
 const cargoCommandSlice = createSlice({
   name: "cargoCommand",
   initialState: {
-    command: CargoCommand.Build,
+    command: CargoCommand.Run,
     lastExecuteCommand: null,
   } as CargoCommandState,
   reducers: {

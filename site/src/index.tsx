@@ -3,7 +3,7 @@ import ReactDOM from "react-dom/client";
 import "./index.css";
 import reportWebVitals from "./reportWebVitals.js";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { SessionHandler } from "./components/join/sessionHandler.tsx";
+import { NewSessionHandler } from "./components/join/newSessionHandler.tsx";
 import UserJoin from "./components/join/userJoin.tsx";
 import { createTheme, ThemeProvider } from "@mui/material";
 import { Provider } from "react-redux";
@@ -41,11 +41,10 @@ root.render(
     <Provider store={store}>
       <ThemeProvider theme={theme}>
         <BrowserRouter>
-          <SessionHandler>
-            <Routes>
-              <Route path="/:sessionId" element={<UserJoin />} />
-            </Routes>
-          </SessionHandler>
+          <Routes>
+            <Route path="/" element={<NewSessionHandler />} />
+            <Route path="/:sessionId" element={<UserJoin />} />
+          </Routes>
         </BrowserRouter>
       </ThemeProvider>
     </Provider>

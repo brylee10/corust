@@ -138,6 +138,7 @@ function RunButton({
           channel: channel,
           username: currUser.username,
         };
+        console.debug("Sending runner config on code run", runnerConfig);
         wsSendRef.current(runnerConfig);
       }
     },
@@ -185,7 +186,7 @@ function RunButton({
         </Button>
       );
     },
-    [handleCargoCommandPopoverClose, dispatch]
+    [handleCargoCommandPopoverClose, dispatch, sendRunnerConfig]
   );
 
   const renderRunButton = useCallback(() => {
