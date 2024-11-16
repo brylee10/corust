@@ -12,6 +12,13 @@ interface UserState {
 }
 
 // Equivalent to `UserState` except all fields are defined
+// BigInt is not serializable by Redux, store as string
+interface UserStateDefinedInput {
+  userId: string;
+  username: string;
+}
+
+// Selector output deserializes `userId` from string to BigInt
 interface UserStateDefined {
   userId: bigint;
   username: string;
@@ -30,9 +37,8 @@ const userSlice = createSlice({
     username: undefined,
   } as UserStateRedux,
   reducers: {
-    setUserState(state, action: PayloadAction<UserStateDefined>) {
-      // BigInt is not serializable by Redux, store as string
-      state.userId = action.payload.userId.toString();
+    setUserState(state, action: PayloadAction<UserStateDefinedInput>) {
+      state.userId = action.payload.userId;
       state.username = action.payload.username;
     },
   },
@@ -50,6 +56,6 @@ export const selectUserState = createSelector(
     } as UserState)
 );
 
-export type { UserState, UserStateDefined };
+export type { UserState, UserStateDefinedInput, UserStateDefined };
 export const { setUserState } = userSlice.actions;
 export default userSlice.reducer;

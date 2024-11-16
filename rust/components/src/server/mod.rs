@@ -310,8 +310,8 @@ impl Server {
 }
 
 fn random_user_id() -> UserId {
-    // With 2^32 possible user ids, the chance of a collision in 1000 user ids is < 1e-4
-    rand::thread_rng().gen::<UserId>() % 10u32.pow(13)
+    // With 10^13 possible user ids, the chance of a collision in 10k user ids is < 1e-5
+    rand::thread_rng().gen::<UserId>() % 10u64.pow(13)
 }
 
 #[derive(Debug, Error)]

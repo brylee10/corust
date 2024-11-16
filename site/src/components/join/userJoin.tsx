@@ -3,7 +3,6 @@ import App from "../../App.tsx";
 import { useParams } from "react-router-dom";
 import { Box } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
-import { RootState } from "../../store/store.tsx";
 import {
   selectUserState,
   setUserState,
@@ -62,7 +61,7 @@ function UserJoin() {
         // Initialize new client
         dispatch(
           setUserState({
-            userId: userJoinResponse.user_id,
+            userId: userJoinResponse.user_id.toString(),
             username: userJoinResponse.username,
           })
         );

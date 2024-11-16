@@ -5,6 +5,7 @@ import { channelReducer, channelVersionReducer } from "./slices/channelSlice";
 import optReducer from "./slices/optSlice";
 import windowSizeReducer from "./slices/windowSize";
 import userReducer from "./slices/userSlice";
+import runStatusReducer from "./slices/runStatusSlice";
 
 // Redux store
 export const store = configureStore({
@@ -16,6 +17,7 @@ export const store = configureStore({
     optSelector: optReducer,
     windowSize: windowSizeReducer,
     userSelector: userReducer,
+    runStatusSlice: runStatusReducer,
   },
 });
 

@@ -13,8 +13,12 @@ import {
 import React from "react";
 import { BouncingDotsLoader } from "./bouncingDotsLoader";
 import TerminalIcon from "@mui/icons-material/Terminal";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../../store/store";
+import {
+  setOutputTooLargeClose,
+  setOutputTooLargeOpen,
+} from "../../store/slices/runStatusSlice";
 
 const AUTO_HIDE_DURATION_MS: number = 6000;
 // Maximum bytes that stdout or stderr can be before child process is killed
@@ -78,38 +82,6 @@ const initRunStatus = (runType: RunType): RunStatus => {
   };
 };
 
-// Utility to update the RunStatus object based on the RunStateUpdate. Similar to a reducer.
-const updateRunStatus = (
-  runType: RunType,
-  runStateUpdate: RunStateUpdate,
-  runStatus: RunStatus | null
-): RunStatus => {
-  if (runStatus === null) {
-    runStatus = initRunStatus(runType);
-  }
-
-  switch (runStateUpdate) {
-    case "RunStarted":
-      // Resets status errors on new run
-      runStatus = { ...runStatus, runState: RunState.Running };
-      break;
-    case "RunEnded":
-      runStatus = { ...runStatus, runState: RunState.Ended };
-      break;
-    case "ConcurrentCompilation":
-      runStatus = { ...runStatus, concurrentCompilation: true };
-      break;
-    case "ClientStateOutOfSync":
-      runStatus = { ...runStatus, clientStateOutOfSync: true };
-      break;
-    case "StdoutErrTooLarge":
-      runStatus = { ...runStatus, stdoutErrTooLarge: true };
-      break;
-  }
-  console.debug("Updated run status", runStatus, runType, runStateUpdate);
-  return runStatus;
-};
-
 const RunnerOutput = styled("div")<{ open: boolean; isNarrowScreen: boolean }>(
   ({ open, isNarrowScreen }) => ({
     fontSize: 16,
@@ -166,6 +138,7 @@ function RunOutputDisplay({
   open,
   setOpen,
 }: RunOutputProps) {
+  const dispatch = useDispatch();
   const theme = useTheme();
   const isNarrowScreen = useSelector(
     (state: RootState) => state.windowSize.isNarrowScreen
@@ -176,9 +149,10 @@ function RunOutputDisplay({
   // Alerts user a compilation was rejected because another compilation was in progress
   const [showConcurrentCompError, setShowConcurrentCompError] =
     useState<boolean>(false);
-  // Alerts user a compilation was rejected because another compilation was in progress
-  const [showOutputSizeError, setShowOutputSizeError] =
-    useState<boolean>(false);
+  // Alerts user the output of the compilation was too large
+  const showOutputSizeError = useSelector(
+    (state: RootState) => state.runStatusSlice.outputTooLargeOpen
+  );
   // Indicates is running icon
   const [showRunningIcon, setShowRunningIcon] = useState<boolean>(false);
 
@@ -187,7 +161,6 @@ function RunOutputDisplay({
       console.debug!("Received run status message", runStatus);
       if (runStatus !== null) {
         setShowConcurrentCompError(runStatus.concurrentCompilation);
-        setShowOutputSizeError(runStatus.stdoutErrTooLarge);
         setShowRunningIcon(runStatus.runState === RunState.Running);
       }
     },
@@ -300,9 +273,12 @@ function RunOutputDisplay({
         TransitionComponent={Grow}
         autoHideDuration={AUTO_HIDE_DURATION_MS}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
-        onClose={() => setShowOutputSizeError(false)}
+        onClose={() => dispatch(setOutputTooLargeClose())}
       >
-        <Alert severity="warning" onClose={() => setShowOutputSizeError(false)}>
+        <Alert
+          severity="warning"
+          onClose={() => dispatch(setOutputTooLargeClose())}
+        >
           Stderr and stdout output size exceeded max output{" "}
           {MAX_OUTPUT_SIZE_BYTES} bytes. Process killed.
         </Alert>
@@ -311,5 +287,5 @@ function RunOutputDisplay({
   );
 }
 
-export type { RunOutput, RunType, RunStatus, ServerRunStatus };
-export { RunOutputDisplay, RunState, updateRunStatus };
+export type { RunOutput, RunType, RunStatus, RunStateUpdate, ServerRunStatus };
+export { RunOutputDisplay, RunState, initRunStatus };

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
 /// Unique user id per session
-pub type UserId = u32;
+pub type UserId = u64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {

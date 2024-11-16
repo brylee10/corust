@@ -39,9 +39,12 @@ import {
 import { Close as CloseIcon } from "@mui/icons-material";
 import { SnackbarProvider, enqueueSnackbar, closeSnackbar } from "notistack";
 import {
+  initRunStatus,
   RunOutput,
+  RunState,
+  RunStateUpdate,
   RunStatus,
-  updateRunStatus,
+  RunType,
   ServerRunStatus,
 } from "./components/editor/runOutputDisplay.tsx";
 import HeaderBar from "./components/headerBar/headerBar.tsx";
@@ -70,6 +73,7 @@ import {
   setLastExecutionCode,
 } from "./store/slices/codeSelectorSlice.tsx";
 import { UserStateDefined } from "./store/slices/userSlice.tsx";
+import { setOutputTooLargeOpen } from "./store/slices/runStatusSlice.tsx";
 
 // Interfaces/Type definitions
 
@@ -394,6 +398,43 @@ function App({ currUser }: AppProps) {
     setCollabSelections(newCollabSelections);
   }, []);
 
+  // Utility to update the RunStatus object based on the RunStateUpdate. Similar to a reducer.
+  const updateRunStatus = useCallback(
+    (
+      runType: RunType,
+      runStateUpdate: RunStateUpdate,
+      runStatus: RunStatus | null
+    ): RunStatus => {
+      if (runStatus === null) {
+        runStatus = initRunStatus(runType);
+      }
+
+      switch (runStateUpdate) {
+        case "RunStarted":
+          // Resets status errors on new run
+          runStatus = { ...runStatus, runState: RunState.Running };
+          break;
+        case "RunEnded":
+          runStatus = { ...runStatus, runState: RunState.Ended };
+          break;
+        case "ConcurrentCompilation":
+          runStatus = { ...runStatus, concurrentCompilation: true };
+          break;
+        case "ClientStateOutOfSync":
+          runStatus = { ...runStatus, clientStateOutOfSync: true };
+          break;
+        case "StdoutErrTooLarge":
+          runStatus = { ...runStatus, stdoutErrTooLarge: true };
+          // Only opens the output panel once if the output is too large
+          dispatch(setOutputTooLargeOpen());
+          break;
+      }
+      console.debug("Updated run status", runStatus, runType, runStateUpdate);
+      return runStatus;
+    },
+    [dispatch]
+  );
+
   // Updates editor, code output, and cargo command configuration state after
   // a snapshot message
   const handleSnapshot = useCallback(
@@ -632,10 +673,14 @@ function App({ currUser }: AppProps) {
               if (runConfigType === RunConfigType.RecentExecution) {
                 const lastExecutionCode = runConfigAction.code;
                 const executingUser = runConfigAction.username;
+                // Caches the last execution configuration for reference
+                dispatch(
+                  setLastExecuteCargoCommand(runConfigAction.cargoCommand)
+                );
+                dispatch(setLastExecuteOptLevel(runConfigAction.optLevel));
+                dispatch(setLastExecuteChannel(runConfigAction.channel));
                 dispatch(setLastExecutionCode(lastExecutionCode));
                 dispatch(setExecutingUser(executingUser));
-                // Enqueue an info snackbar
-                console.debug("Enqueueing snackbar");
                 filteredEnqueueSnackbar(
                   <span>
                     User <strong>{executingUser}</strong> ran:{" "}

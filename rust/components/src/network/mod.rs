@@ -22,7 +22,7 @@ use thiserror::Error;
 use crate::{client::ClientNetwork, Snapshot};
 
 // Unique ID of a component in the network
-pub type ComponentId = u32;
+pub type ComponentId = u64;
 type Time = u64;
 pub type EventQueue = BinaryHeap<Reverse<NetworkEvent>>;
 type MetadataMap = FnvHashMap<ComponentId, ComponentMetadata>;
