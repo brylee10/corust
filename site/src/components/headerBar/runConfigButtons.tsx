@@ -1,4 +1,4 @@
-import React, { useState, ReactNode, useEffect } from "react";
+import React, { useState, ReactNode, useEffect, useCallback } from "react";
 import {
   Button,
   ButtonGroup,
@@ -18,6 +18,12 @@ import {
 import { OptLevel, setOptLevel } from "../../store/slices/optSlice";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../../store/store";
+import {
+  WsClientTextMsg,
+  WsClientTextMsgType,
+  WsConfigUpdate,
+} from "../../App";
+import { selectUserState } from "../../store/slices/userSlice";
 
 const ConfigButton = styled(Button)({
   padding: "10px 15px",
@@ -160,14 +166,23 @@ interface RunConfigButtonsProps {
   stableVersion: string;
   betaVersion: string;
   nightlyVersion: string;
+  wsSendRef: React.MutableRefObject<
+    (wsMessage: WsClientTextMsg) => void | null
+  >;
 }
 
 function RunConfigButtons({
   stableVersion,
   betaVersion,
   nightlyVersion,
+  wsSendRef,
 }: RunConfigButtonsProps) {
   const dispatch = useDispatch();
+  const cargoCommand = useSelector(
+    (state: RootState) => state.cargoCommandSelector.command
+  );
+  // Current User
+  const currUser = useSelector(selectUserState);
   // Optimization level
   const optLevel = useSelector((state: RootState) => state.optSelector.level);
   const [optAnchor, setOptAnchor] = React.useState<HTMLButtonElement | null>(
@@ -185,6 +200,22 @@ function RunConfigButtons({
     React.useState<HTMLButtonElement | null>(null);
   const channelPopoverOpen = Boolean(channelAnchor);
 
+  const sendRunnerConfig = useCallback(
+    (optLevel: OptLevel, channel: RustChannel) => {
+      if (currUser.username) {
+        const runnerConfig: WsConfigUpdate = {
+          type: WsClientTextMsgType.WsConfigUpdate,
+          cargoCommand,
+          optLevel,
+          channel,
+          username: currUser.username,
+        };
+        wsSendRef.current(runnerConfig);
+      }
+    },
+    [cargoCommand, wsSendRef, currUser]
+  );
+
   // Optimization level buttons
   const OptButton = ({ level, description }: OptButtonProps) => (
     <Button
@@ -192,6 +223,7 @@ function RunConfigButtons({
       sx={commonButtonStyle}
       onClick={() => {
         dispatch(setOptLevel(level));
+        sendRunnerConfig(level, channel);
         handleOptPopoverClose();
       }}
     >
@@ -229,6 +261,7 @@ function RunConfigButtons({
         dispatch(setChannel(channel));
         const channelVersionPayload = { channel, version };
         dispatch(setChannelVersion(channelVersionPayload));
+        sendRunnerConfig(optLevel, channel);
         handleChannelPopoverClose();
       }}
     >

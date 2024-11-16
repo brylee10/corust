@@ -254,7 +254,6 @@ pub enum RunConfigAction {
 }
 
 /// Sent when a user requests to run code
-/// This should update the displayed `Recent Run` parameters
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all(serialize = "camelCase"))]
 pub struct RunConfigExec {
@@ -289,9 +288,9 @@ pub struct RunConfig {
 impl Default for RunConfig {
     fn default() -> Self {
         // A sensible default execution configuration
-        // `cargo +stable run --release`
+        // `cargo +stable build --release`
         RunConfig {
-            cargo_command: CargoCommand::Run,
+            cargo_command: CargoCommand::Build,
             channel: Channel::Stable,
             opt_level: OptLevel::Release,
         }
@@ -308,7 +307,8 @@ pub struct Snapshot {
     pub document: String,
     pub cursor_map: CursorMap,
     pub state_id: ServerStateId,
-    /// Present if the code has been executed before
     /// Only used in live app
+    pub run_config: RunConfig,
+    /// Present if the code has been executed before
     pub code_output_state: Option<CodeOutputState>,
 }

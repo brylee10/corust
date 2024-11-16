@@ -15,7 +15,7 @@ use crate::{
         CursorMap, CursorPos, CursorTransformError, LocalMessage, Network, NetworkShared,
         RemoteUpdate, User, UserId,
     },
-    Snapshot,
+    RunConfig, Snapshot,
 };
 
 // Increments on each server document update
@@ -272,7 +272,7 @@ impl Server {
 
     /// Returns a unique user id of the next user.
     pub fn next_user_id(&mut self) -> UserId {
-        random_u64()
+        random_user_id()
     }
 
     pub fn current_state_id(&self) -> StateId {
@@ -309,9 +309,9 @@ impl Server {
     }
 }
 
-fn random_u64() -> u64 {
-    // With 10^13 possible user ids, the chance of a collision in 10k user ids is < 1e-5
-    rand::thread_rng().gen::<u64>() % 10u64.pow(13)
+fn random_user_id() -> UserId {
+    // With 2^32 possible user ids, the chance of a collision in 1000 user ids is < 1e-4
+    rand::thread_rng().gen::<UserId>() % 10u32.pow(13)
 }
 
 #[derive(Debug, Error)]
@@ -413,6 +413,7 @@ impl Component for ServerNetwork {
             document: current_doc_state.document().to_string(),
             cursor_map: current_doc_state.cursor_map().clone(),
             state_id: self.current_state_id,
+            run_config: RunConfig::default(),
             code_output_state: None,
         };
 

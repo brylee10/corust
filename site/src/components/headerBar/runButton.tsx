@@ -23,6 +23,12 @@ import {
 } from "../../store/slices/cargoCommandSlice.tsx";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../../store/store.tsx";
+import {
+  WsClientTextMsg,
+  WsClientTextMsgType,
+  WsConfigUpdate,
+} from "../../App.tsx";
+import { selectUserState } from "../../store/slices/userSlice.tsx";
 
 const CustomRunButton = styled(Button)({
   padding: "10px 20px",
@@ -86,6 +92,7 @@ interface RunButtonProps {
   setShowCargoOutput: (show: boolean) => void;
   setCargoOutputOpen: (show: boolean) => void;
   executeCode: () => void;
+  wsSendRef: React.MutableRefObject<(wsMessage: WsClientTextMsg) => void>;
 }
 
 // Represents the `Run` or `Build` button in the header bar
@@ -94,8 +101,14 @@ function RunButton({
   setShowCargoOutput,
   setCargoOutputOpen,
   executeCode,
+  wsSendRef,
 }: RunButtonProps) {
   const dispatch = useDispatch();
+  const currUser = useSelector(selectUserState);
+  const channel = useSelector(
+    (state: RootState) => state.channelSelector.channel
+  );
+  const optLevel = useSelector((state: RootState) => state.optSelector.level);
   // Cargo Command
   // The `cargoCommand` is inferred by the parent component.
   // The `cargoCommand` manually set by the user can override the `autoCargoCommand`.
@@ -113,6 +126,22 @@ function RunButton({
       [CargoCommand.Test]: "TEST",
     }),
     []
+  );
+
+  const sendRunnerConfig = useCallback(
+    (cargoCommand: CargoCommand) => {
+      if (currUser.username !== undefined) {
+        const runnerConfig: WsConfigUpdate = {
+          type: WsClientTextMsgType.WsConfigUpdate,
+          cargoCommand: cargoCommand,
+          optLevel: optLevel,
+          channel: channel,
+          username: currUser.username,
+        };
+        wsSendRef.current(runnerConfig);
+      }
+    },
+    [optLevel, channel, wsSendRef, currUser]
   );
 
   const handleCargoCommandPopoverClose = useCallback(() => {
@@ -135,6 +164,7 @@ function RunButton({
           sx={commonButtonStyle}
           onClick={() => {
             dispatch(setCargoCommand(cargoCommand));
+            sendRunnerConfig(cargoCommand);
             handleCargoCommandPopoverClose();
           }}
         >

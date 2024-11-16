@@ -12,6 +12,7 @@ import {
   styled,
 } from "@mui/material";
 import PeopleIcon from "@mui/icons-material/People";
+import { UserState } from "../../store/slices/userSlice";
 
 // Define constants once
 const CustomButton = styled(Button)({
@@ -34,14 +35,14 @@ interface HeaderBarProps {
   RunButton: React.ReactNode;
   RunConfigButtons: React.ReactNode;
   userArr: UserInner[];
-  selfUserId: bigint;
+  currUser: UserState;
 }
 
 function HeaderBar({
   RunButton,
   RunConfigButtons,
   userArr,
-  selfUserId,
+  currUser,
 }: HeaderBarProps) {
   const [openCopyNotification, setOpenCopyNotification] = React.useState(false);
 
@@ -58,7 +59,7 @@ function HeaderBar({
           {RunConfigButtons}
         </Stack>
         <Box className="header-right">
-          <UserIconList userArr={userArr} selfUserId={selfUserId} />
+          <UserIconList userArr={userArr} currUser={currUser} />
           <Tooltip title="Copy Corust Link">
             <CustomButton onClick={copyCorustLink} startIcon={<PeopleIcon />}>
               Share

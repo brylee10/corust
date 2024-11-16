@@ -3,7 +3,8 @@
  * Command can be Build, Run, or Test.
  */
 
-import { createSlice } from "@reduxjs/toolkit";
+import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { set } from "lodash";
 
 enum CargoCommand {
   Build = "Build",
@@ -11,18 +12,29 @@ enum CargoCommand {
   Test = "Test",
 }
 
+interface CargoCommandState {
+  command: CargoCommand;
+  lastExecuteCommand: CargoCommand | null;
+}
+
 const cargoCommandSlice = createSlice({
   name: "cargoCommand",
   initialState: {
     command: CargoCommand.Build,
-  },
+    lastExecuteCommand: null,
+  } as CargoCommandState,
   reducers: {
-    setCargoCommand: (state, action) => {
+    setCargoCommand: (state, action: PayloadAction<CargoCommand>) => {
       state.command = action.payload;
+    },
+    setLastExecuteCargoCommand(state, action: PayloadAction<CargoCommand>) {
+      state.lastExecuteCommand = action.payload;
     },
   },
 });
 
 export { CargoCommand };
-export const { setCargoCommand } = cargoCommandSlice.actions;
+export const { setCargoCommand, setLastExecuteCargoCommand } =
+  cargoCommandSlice.actions;
+export type { CargoCommandState };
 export default cargoCommandSlice.reducer;

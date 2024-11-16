@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  ReactElement,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import "./App.css"; // Ensure to import the CSS file
 import {
   ViewUpdate,
@@ -22,7 +28,14 @@ import {
   Client,
 } from "corust-components/corust_components.js";
 import { useParams } from "react-router-dom";
-import { Alert, Snackbar, Grow, Box, IconButton } from "@mui/material";
+import {
+  Alert,
+  Snackbar,
+  Grow,
+  Box,
+  IconButton,
+  useTheme,
+} from "@mui/material";
 import { Close as CloseIcon } from "@mui/icons-material";
 import { SnackbarProvider, enqueueSnackbar, closeSnackbar } from "notistack";
 import {
@@ -37,31 +50,47 @@ import RunConfigButtons from "./components/headerBar/runConfigButtons.tsx";
 import {
   CargoCommand,
   setCargoCommand,
+  setLastExecuteCargoCommand,
 } from "./store/slices/cargoCommandSlice.tsx";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "./store/store.tsx";
 import EditorContainer from "./components/editor/container.tsx";
-import { OptLevel, setOptLevel } from "./store/slices/optSlice.tsx";
-import { RustChannel, setChannel } from "./store/slices/channelSlice.tsx";
+import {
+  OptLevel,
+  setLastExecuteOptLevel,
+  setOptLevel,
+} from "./store/slices/optSlice.tsx";
+import {
+  RustChannel,
+  setChannel,
+  setLastExecuteChannel,
+} from "./store/slices/channelSlice.tsx";
 import {
   setExecutingUser,
   setLastExecutionCode,
 } from "./store/slices/codeSelectorSlice.tsx";
+import { UserStateDefined } from "./store/slices/userSlice.tsx";
 
 // Interfaces/Type definitions
 
 // Websocket message variants
 // Commands with a `type`, which can be deserialized by
 // the server into a corresponding Rust struct.
-type WsClientTextMsg = RustDocUpdate | RustExecuteCommand;
+type WsClientTextMsg = WsRustDocUpdate | WsRustExecuteCommand | WsConfigUpdate;
 
-interface RustDocUpdate {
-  type: string;
+enum WsClientTextMsgType {
+  WsDocUpdate = "wsDocUpdate",
+  WsExecuteCommand = "wsExecuteCommand",
+  WsConfigUpdate = "wsConfigUpdate",
+}
+
+interface WsRustDocUpdate {
+  type: WsClientTextMsgType.WsDocUpdate;
   docUpdate: string;
 }
 
-interface RustExecuteCommand {
-  type: string;
+interface WsRustExecuteCommand {
+  type: WsClientTextMsgType.WsExecuteCommand;
   code: string;
   targetType: TargetType;
   cargoCommand: CargoCommand;
@@ -69,8 +98,17 @@ interface RustExecuteCommand {
   channel: RustChannel;
 }
 
+// Represents an update to the execution configuration
+interface WsConfigUpdate {
+  type: WsClientTextMsgType.WsConfigUpdate;
+  cargoCommand: CargoCommand;
+  optLevel: OptLevel;
+  channel: RustChannel;
+  username: string;
+}
+
 // Describes the most recently executed code.
-type RunConfigAction = RecentExecutionConfig | ConfigUpdateConfig;
+type RunConfigAction = RecentExecutionConfig | ConfigUpdate;
 
 interface RecentExecutionConfig {
   type: RunConfigType.RecentExecution;
@@ -82,17 +120,25 @@ interface RecentExecutionConfig {
   username: string;
 }
 
-interface ConfigUpdateConfig {
-  type: RunConfigType.CargoConfig;
+interface ConfigUpdate {
+  type: RunConfigType.ConfigUpdate;
   cargoCommand: CargoCommand;
   optLevel: OptLevel;
   channel: RustChannel;
+  username: string;
   // No `recentRunCode` field
+}
+
+// Represents a configuration to run code
+interface RunConfig {
+  cargoCommand: CargoCommand;
+  optLevel: OptLevel;
+  channel: RustChannel;
 }
 
 enum RunConfigType {
   RecentExecution = "RecentExecution",
-  CargoConfig = "CargoConfig",
+  ConfigUpdate = "ConfigUpdate",
 }
 
 // Document update, with additional metadata
@@ -152,6 +198,7 @@ interface Snapshot {
   // Opaque Rust struct that does not need to be accessed
   cursorMap: any;
   stateId: number;
+  runConfig: RunConfig;
   /// Optional - Present if the code has been executed before
   codeOutputState?: CodeOutputState;
 }
@@ -183,7 +230,7 @@ interface UserSelectionRange {
 }
 
 interface AppProps {
-  userId: bigint;
+  currUser: UserStateDefined;
 }
 
 enum ServerMessageType {
@@ -196,16 +243,16 @@ enum ServerMessageType {
 }
 
 // Utilities
-const docUpdateToRust = (msg: DocUpdateWrapper): RustDocUpdate => {
+const docUpdateToRust = (msg: DocUpdateWrapper): WsRustDocUpdate => {
   return {
-    type: "wsDocUpdate",
+    type: WsClientTextMsgType.WsDocUpdate,
     docUpdate: msg.inner.docUpdate,
   };
 };
 
-const executeCommandToObj = (msg: ExecuteCommand): RustExecuteCommand => {
+const executeCommandToObj = (msg: ExecuteCommand): WsRustExecuteCommand => {
   return {
-    type: "wsExecuteCommand",
+    type: WsClientTextMsgType.WsExecuteCommand,
     code: msg.code,
     targetType: msg.targetType,
     cargoCommand: msg.cargoCommand,
@@ -226,8 +273,9 @@ const HAS_MAIN_FUNCTION_RE = new RegExp(
   "m"
 );
 
-function App({ userId }: AppProps) {
+function App({ currUser }: AppProps) {
   const dispatch = useDispatch();
+  const theme = useTheme();
   // Maximum 1000 document updates a minute.
   // For reference, 1000 character updates per minute is a typing speed of ~200 words per minute.
   const maxUpdatesPerMinute = 1000;
@@ -260,6 +308,9 @@ function App({ userId }: AppProps) {
   const channel = useSelector(
     (state: RootState) => state.channelSelector.channel
   );
+  const cargoCommandRef = useRef(cargoCommand);
+  const optLevelRef = useRef(optLevel);
+  const channelRef = useRef(channel);
   const [stableVersion, setStableVersion] = useState<string>("1.82.0");
   const [betaVersion, setBetaVersion] = useState<string>("1.82.0");
   const [nightlyVersion, setNightlyVersion] = useState<string>("1.82.0");
@@ -275,7 +326,7 @@ function App({ userId }: AppProps) {
   // The client object should be created once per component render. It cannot be passed in as
   // a prop and modified in place, otherwise the component would be impure.
   const [client] = useState<Client>(
-    Client.new(userId, maxUpdatesPerMinute, maxDocSizePerMinute)
+    Client.new(currUser.userId, maxUpdatesPerMinute, maxDocSizePerMinute)
   );
   // CodeMirror view
   const [view, setView] = useState<EditorView | undefined>(undefined);
@@ -348,6 +399,12 @@ function App({ userId }: AppProps) {
   const handleSnapshot = useCallback(
     (snapshot: Snapshot) => {
       console.debug("Handling snapshot: ", snapshot);
+
+      dispatch(setOptLevel(snapshot.runConfig.optLevel));
+      dispatch(setChannel(snapshot.runConfig.channel));
+      dispatch(setCargoCommand(snapshot.runConfig.cargoCommand));
+
+      // Set previous execution state
       const runnerOutput = snapshot.codeOutputState?.runnerOutput ?? null;
       if (runnerOutput !== null) {
         // Prior cargo execution exists, show the cargo output
@@ -373,13 +430,47 @@ function App({ userId }: AppProps) {
         }
         // The container message
         const executeCommand = containerMsg[containerMessageType];
-        dispatch(setCargoCommand(executeCommand.cargoCommand));
-        dispatch(setOptLevel(executeCommand.optLevel));
-        dispatch(setChannel(executeCommand.channel));
+        dispatch(setLastExecuteCargoCommand(executeCommand.cargoCommand));
+        dispatch(setLastExecuteOptLevel(executeCommand.optLevel));
+        dispatch(setLastExecuteChannel(executeCommand.channel));
         dispatch(setLastExecutionCode(executeCommand.code));
       }
     },
     [dispatch]
+  );
+
+  // Enqueues a snackbar wiht a custom color palette and close button
+  const enqueueCustomSnackbar = useCallback(
+    (html: ReactElement) => {
+      enqueueSnackbar(html, {
+        // Style mirrors the `channel` and `optLevel` colors,
+        // secondary button colors
+        style: {
+          backgroundColor: theme.palette.secondary.main,
+          color: "black",
+        },
+        action: (key) => (
+          <IconButton
+            aria-label="close"
+            color="inherit"
+            onClick={() => closeSnackbar(key)}
+          >
+            <CloseIcon />
+          </IconButton>
+        ),
+      });
+    },
+    [theme]
+  );
+
+  // Conditionally enqueues a snackbar if the provided `username` is not the current user
+  const filteredEnqueueSnackbar = useCallback(
+    (html: ReactElement, username: string) => {
+      if (currUser.username !== username) {
+        enqueueCustomSnackbar(html);
+      }
+    },
+    [enqueueCustomSnackbar, currUser]
   );
 
   useEffect(() => {
@@ -533,13 +624,9 @@ function App({ userId }: AppProps) {
               const runConfigAction: RunConfigAction =
                 serverMessageObj[serverMsgType];
               const runConfigType = runConfigAction.type;
-              const channel = runConfigAction.channel;
-              const optLevel = runConfigAction.optLevel;
-              const cargoCommand = runConfigAction.cargoCommand;
-
-              dispatch(setChannel(channel));
-              dispatch(setOptLevel(optLevel));
-              dispatch(setCargoCommand(cargoCommand));
+              const newChannel = runConfigAction.channel;
+              const newOptLevel = runConfigAction.optLevel;
+              const newCargoCommand = runConfigAction.cargoCommand;
 
               console.debug("Received run config message: ", runConfigAction);
               if (runConfigType === RunConfigType.RecentExecution) {
@@ -549,31 +636,51 @@ function App({ userId }: AppProps) {
                 dispatch(setExecutingUser(executingUser));
                 // Enqueue an info snackbar
                 console.debug("Enqueueing snackbar");
-                enqueueSnackbar(
+                filteredEnqueueSnackbar(
                   <span>
                     User <strong>{executingUser}</strong> ran:{" "}
-                    <code>cargo {cargoCommand.toLowerCase()}</code>
+                    <code>cargo {newCargoCommand.toLowerCase()}</code>
                   </span>,
-                  {
-                    // Style mirrors the `channel` and `optLevel` colors,
-                    // secondary button colors
-                    style: {
-                      backgroundColor: "#F5EEE3",
-                      color: "black",
-                    },
-                    action: (key) => (
-                      <IconButton
-                        aria-label="close"
-                        color="inherit"
-                        onClick={() => closeSnackbar(key)}
-                      >
-                        <CloseIcon />
-                      </IconButton>
-                    ),
-                  }
+                  executingUser
                 );
-              } else {
+              } else if (runConfigType === RunConfigType.ConfigUpdate) {
+                const updatingUser = runConfigAction.username;
+                if (channelRef.current !== newChannel) {
+                  filteredEnqueueSnackbar(
+                    <span>
+                      User <strong>{updatingUser}</strong> updated the channel
+                      from <strong>{channelRef.current}</strong> to{" "}
+                      <strong>{newChannel}</strong>
+                    </span>,
+                    updatingUser
+                  );
+                }
+                if (optLevelRef.current !== newOptLevel) {
+                  filteredEnqueueSnackbar(
+                    <span>
+                      User <strong>{updatingUser}</strong> updated the
+                      optimization level from{" "}
+                      <strong>{optLevelRef.current}</strong> to{" "}
+                      <strong>{newOptLevel}</strong>
+                    </span>,
+                    updatingUser
+                  );
+                }
+                if (cargoCommandRef.current !== newCargoCommand) {
+                  filteredEnqueueSnackbar(
+                    <span>
+                      User <strong>{updatingUser}</strong> updated the cargo
+                      command from <strong>{cargoCommandRef.current}</strong> to{" "}
+                      <strong>{newCargoCommand}</strong>
+                    </span>,
+                    updatingUser
+                  );
+                }
               }
+
+              dispatch(setChannel(newChannel));
+              dispatch(setOptLevel(newOptLevel));
+              dispatch(setCargoCommand(newCargoCommand));
 
               console.debug(
                 "Received run config message: ",
@@ -626,6 +733,8 @@ function App({ userId }: AppProps) {
     updateCollabSelections,
     dispatch,
     handleSnapshot,
+    enqueueCustomSnackbar,
+    filteredEnqueueSnackbar,
   ]);
 
   // Sends a stringified object to the server
@@ -641,6 +750,7 @@ function App({ userId }: AppProps) {
   const wsSendRef = useRef(wsSend);
 
   // Update Refs, does not trigger rerenders
+  // Refs are used to avoid mounting and unmounting the websocket connection
   useEffect(() => {
     cargoOutputRef.current = runOutput;
   }, [runOutput]);
@@ -662,6 +772,18 @@ function App({ userId }: AppProps) {
     const isBinary = HAS_MAIN_FUNCTION_RE.test(codeContainerText.code);
     setTargetType(isBinary ? TargetType.Binary : TargetType.Library);
   }, [codeContainerText.code]);
+
+  useEffect(() => {
+    cargoCommandRef.current = cargoCommand;
+  }, [cargoCommand]);
+
+  useEffect(() => {
+    optLevelRef.current = optLevel;
+  }, [optLevel]);
+
+  useEffect(() => {
+    channelRef.current = channel;
+  }, [channel]);
 
   // Currently makes simple assumption that binary crates are always run
   // and library crates are built
@@ -818,14 +940,16 @@ function App({ userId }: AppProps) {
           setShowCargoOutput,
           setCargoOutputOpen,
           executeCode,
+          wsSendRef,
         })}
         RunConfigButtons={RunConfigButtons({
           stableVersion,
           betaVersion,
           nightlyVersion,
+          wsSendRef,
         })}
         userArr={userArr}
-        selfUserId={client.user_id()}
+        currUser={currUser}
       />
       <EditorContainer
         setView={setView}
@@ -858,9 +982,12 @@ function App({ userId }: AppProps) {
 }
 
 export default App;
+export { WsClientTextMsgType };
 export type {
   UserSelectionRange,
   SelectionRange,
   SelectionFocused,
   SelectionUnfocused,
+  WsConfigUpdate,
+  WsClientTextMsg,
 };

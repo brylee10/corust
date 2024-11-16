@@ -108,6 +108,7 @@ impl reject::Reject for DbError {}
 #[derive(Debug, Serialize, Deserialize)]
 pub struct UserJoinResponse {
     user_id: UserId,
+    username: String,
 }
 
 // Parse color in the format "rgb({}, {}, {})"
@@ -261,7 +262,10 @@ async fn handle_user_join(
                 user.activity.active = true;
                 user.activity.last_activity = std::time::Instant::now();
                 log::debug!("User rejoining with ID: {:?}", user_id);
-                return Ok(warp::reply::json(&UserJoinResponse { user_id }));
+                return Ok(warp::reply::json(&UserJoinResponse {
+                    user_id,
+                    username: user.username().to_string(),
+                }));
             }
             // If not present, then will join with a new user_id
             server.write().await.next_user_id()
@@ -322,7 +326,10 @@ async fn handle_user_join(
     let user = User::new(user_id, username.to_string(), color, activity);
     add_user(session.clone(), user, db_path.clone()).await?;
 
-    Ok(warp::reply::json(&UserJoinResponse { user_id }))
+    Ok(warp::reply::json(&UserJoinResponse {
+        user_id,
+        username: username.to_string(),
+    }))
 }
 
 pub fn user_join_route(

@@ -1,17 +1,26 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect } from "react";
 import App from "../../App.tsx";
 import { useParams } from "react-router-dom";
 import { Box } from "@mui/material";
+import { useDispatch, useSelector } from "react-redux";
+import { RootState } from "../../store/store.tsx";
+import {
+  selectUserState,
+  setUserState,
+  UserStateDefined,
+} from "../../store/slices/userSlice.tsx";
 
 interface UserJoinResponse {
   // Rust server field names in snake case
   user_id: bigint;
+  username: string;
 }
 
 function UserJoin() {
+  const dispatch = useDispatch();
+  const userState = useSelector(selectUserState);
   // Route params
   const params = useParams();
-  const [userId, setUserId] = useState<bigint | undefined>(undefined);
 
   const clientJoin = useCallback(
     async () => {
@@ -51,8 +60,12 @@ function UserJoin() {
         );
 
         // Initialize new client
-        console.debug("Setting user id to: ", userJoinResponse.user_id);
-        setUserId(userJoinResponse.user_id);
+        dispatch(
+          setUserState({
+            userId: userJoinResponse.user_id,
+            username: userJoinResponse.username,
+          })
+        );
         sessionStorage.setItem(
           "sessionUserId_" + params.sessionId,
           userJoinResponse.user_id.toString()
@@ -75,8 +88,8 @@ function UserJoin() {
 
   // Explicitly check for equivalence to `undefined` otherwise `userId = 0` is falsey as well
   // one of the few times React StrictMode hid a bug!
-  return userId !== undefined ? (
-    <App userId={userId} />
+  return userState.userId !== undefined && userState.username !== undefined ? (
+    <App currUser={userState as UserStateDefined} />
   ) : (
     <Box>Failed to connect to server</Box>
   );

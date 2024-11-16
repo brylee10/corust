@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use corust_components::network::{UserId, UserList};
 use corust_components::server::ServerError;
-use corust_components::BroadcastLocalDocUpdate;
+use corust_components::{BroadcastLocalDocUpdate, RunConfig, RunConfigAction, RunConfigUpdate};
 use corust_sandbox::container::ContainerError;
 use corust_types::execution::CargoCommandType;
 use corust_types::{CodeOutputState, ContainerMessage, ExecuteCommand};
@@ -62,6 +62,8 @@ pub enum WsClientTextMsg {
     BroadcastDocUpdate(LocalUpdateStringified),
     #[serde(rename = "wsExecuteCommand")]
     Execute(ExecuteCommand),
+    #[serde(rename = "wsConfigUpdate")]
+    ConfigUpdate(RunConfigUpdate),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -103,6 +105,7 @@ pub(crate) async fn handle_websocket(
     send_snapshot(
         Arc::clone(&server),
         session.code_output_state(&CargoCommandType::Execute),
+        session.run_config().clone(),
         &mut ws_tx,
     )
     .await;
@@ -232,7 +235,6 @@ async fn handle_ws_message(
                 if msg.is_text() {
                     handle_text_message(
                         msg,
-                        server,
                         bcast_tx,
                         shared_ws_tx,
                         session,
@@ -266,7 +268,6 @@ async fn handle_ws_message(
 
 async fn handle_text_message(
     msg: Message,
-    server: SharedServer,
     bcast_tx: tokio::sync::broadcast::Sender<ServerMessage>,
     shared_ws_tx: SharedWsSender,
     session: SharedSession,
@@ -279,6 +280,7 @@ async fn handle_text_message(
     let msg = msg.to_str().unwrap();
     log::trace!("Received raw message from client: {msg:?}");
     let client_ws_msg: WsClientTextMsg = serde_json::from_str(msg).unwrap();
+    let server = session.server();
     match client_ws_msg {
         WsClientTextMsg::BroadcastDocUpdate(doc_update_stringified) => {
             let msg: BroadcastLocalDocUpdate =
@@ -322,7 +324,7 @@ async fn handle_text_message(
             // Spawn new task for execution to allow processing other ws messages
             let session = Arc::clone(&session);
             let container_factory = Arc::clone(&container_factory);
-            let bcast_tx = bcast_tx.clone();
+            let bcast_tx: broadcast::Sender<ServerMessage> = bcast_tx.clone();
             let shared_ws_tx = Arc::clone(&shared_ws_tx);
             tokio::spawn({
                 let username = username.to_string();
@@ -338,6 +340,14 @@ async fn handle_text_message(
                     .await;
                 }
             });
+        }
+        WsClientTextMsg::ConfigUpdate(run_config_update) => {
+            log::debug!("Received Run Config Update from client: {run_config_update:?}");
+            session.set_run_config(run_config_update.run_config.clone());
+            let msg = ServerMessage::RunConfigAction(RunConfigAction::ConfigUpdate(
+                run_config_update.clone(),
+            ));
+            bcast_tx.send(msg)?;
         }
     };
     Ok(())
@@ -554,6 +564,7 @@ async fn ws_mark_remove_inactive_users(
 async fn send_snapshot(
     server: SharedServer,
     code_output_state: Option<CodeOutputState>,
+    run_config: RunConfig,
     ws_tx: &mut SplitSink<WebSocket, Message>,
 ) {
     let server = server.read().await;
@@ -564,6 +575,7 @@ async fn send_snapshot(
         document: server.current_document_state().document().to_string(),
         cursor_map: server.current_document_state().cursor_map().clone(),
         state_id: server.current_state_id(),
+        run_config,
         code_output_state,
     };
     // User Update 4: On join, send new user the UserList

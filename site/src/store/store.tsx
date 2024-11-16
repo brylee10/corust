@@ -4,6 +4,7 @@ import cargoCommandReducer from "./slices/cargoCommandSlice";
 import { channelReducer, channelVersionReducer } from "./slices/channelSlice";
 import optReducer from "./slices/optSlice";
 import windowSizeReducer from "./slices/windowSize";
+import userReducer from "./slices/userSlice";
 
 // Redux store
 export const store = configureStore({
@@ -14,6 +15,7 @@ export const store = configureStore({
     channelVersionSelector: channelVersionReducer,
     optSelector: optReducer,
     windowSize: windowSizeReducer,
+    userSelector: userReducer,
   },
 });
 

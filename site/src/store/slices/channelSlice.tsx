@@ -12,14 +12,23 @@ enum RustChannel {
   Nightly = "Nightly",
 }
 
+interface ChannelState {
+  channel: RustChannel;
+  lastExecuteChannel: RustChannel | null;
+}
+
 const channelSlice = createSlice({
   name: "channel",
   initialState: {
     channel: RustChannel.Stable,
-  },
+    lastExecuteChannel: null,
+  } as ChannelState,
   reducers: {
-    setChannel(state, action) {
+    setChannel(state, action: PayloadAction<RustChannel>) {
       state.channel = action.payload;
+    },
+    setLastExecuteChannel(state, action: PayloadAction<RustChannel>) {
+      state.lastExecuteChannel = action.payload;
     },
   },
 });
@@ -50,7 +59,8 @@ const channelVersionSlice = createSlice({
 });
 
 export { RustChannel };
-export const { setChannel } = channelSlice.actions;
+export const { setChannel, setLastExecuteChannel } = channelSlice.actions;
 export const { setChannelVersion } = channelVersionSlice.actions;
+export type { ChannelState };
 export const channelReducer = channelSlice.reducer;
 export const channelVersionReducer = channelVersionSlice.reducer;

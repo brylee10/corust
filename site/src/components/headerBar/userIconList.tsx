@@ -2,14 +2,16 @@ import { UserInner } from "../../../../rust/components/pkg/corust_components";
 import { useEffect, useState } from "react";
 import UserIcon from "./userIcon";
 import { Box } from "@mui/material";
+import { UserState } from "../../store/slices/userSlice";
 
 interface UserIconListProps {
   userArr: UserInner[];
-  selfUserId: bigint;
+  // The user state of the current user
+  currUser: UserState;
 }
 
 // Represents a list of user icons.
-function UserIconList({ userArr, selfUserId }: UserIconListProps) {
+function UserIconList({ userArr, currUser }: UserIconListProps) {
   const [userArrSorted, setUserArrSorted] = useState<UserInner[]>(userArr);
 
   const styles = {
@@ -26,7 +28,7 @@ function UserIconList({ userArr, selfUserId }: UserIconListProps) {
         key={user.username()}
         name={user.username()}
         color={user.color()}
-        isSelf={user.user_id() === selfUserId}
+        isSelf={user.user_id() === currUser.userId}
       />
     );
   };
@@ -36,13 +38,13 @@ function UserIconList({ userArr, selfUserId }: UserIconListProps) {
     // 1. Self user should be at the end
     // 2. Others sort by increasing user_id
     const sortedArr = [...userArr].sort((a, b) => {
-      if (a.user_id() === selfUserId) return 1;
-      if (b.user_id() === selfUserId) return -1;
+      if (a.user_id() === currUser.userId) return 1;
+      if (b.user_id() === currUser.userId) return -1;
       return a.user_id() < b.user_id() ? -1 : 1;
     });
 
     setUserArrSorted(sortedArr);
-  }, [userArr, selfUserId]);
+  }, [userArr, currUser]);
 
   return (
     <Box style={styles.container}>
