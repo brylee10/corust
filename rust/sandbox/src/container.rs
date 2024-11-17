@@ -15,15 +15,17 @@ use corust_types::{
     OptLevel,
 };
 use enumset::{EnumSet, EnumSetType};
+use futures::{SinkExt, StreamExt};
 use snafu::{OptionExt, ResultExt, Snafu};
 use tokio::{
-    io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader, BufWriter},
+    io::{AsyncBufReadExt, BufReader},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
     sync::{mpsc, OwnedSemaphorePermit, Semaphore},
     task::JoinSet,
 };
+use tokio_util::codec::{FramedRead, FramedWrite};
 
-use crate::MESSAGE_BUF_SIZE_BYTES;
+use crate::codec::{ContainerMessageCodec, ContainerResponseCodec};
 
 pub const IO_COMPONENT_CHANNEL_SIZE: usize = 100;
 // Max number of bytes a stdout/stderr can be before the process is killed
@@ -303,63 +305,13 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
     // Read bytes from Child stdout and send to the `stdout_rx`
     // Code execution results are written to stdout
     tasks.spawn(async move {
-        let mut stdout = BufReader::new(stdout);
-        // Reads buffer size
-        let mut msg_size_buf = [0u8; MESSAGE_BUF_SIZE_BYTES];
-        loop {
-            // Message size is sent as 4 byte little endian
-            let msg_size_buf_bytes = stdout
-                .read(&mut msg_size_buf)
-                .await
-                .context(ReadStdoutSnafu)?;
-
-            if msg_size_buf_bytes == 0 {
-                log::debug!("Child stdout has closed, reached EOF");
-                return Ok(());
-            }
-
-            if msg_size_buf_bytes != MESSAGE_BUF_SIZE_BYTES {
-                log::error!(
-                    "Incorrect message size length. Expected {} bytes, got {} bytes",
-                    MESSAGE_BUF_SIZE_BYTES,
-                    msg_size_buf_bytes
-                );
-                return Err(ContainerError::IncorrectMessageLength {
-                    expected: MESSAGE_BUF_SIZE_BYTES,
-                    received: msg_size_buf_bytes,
-                });
-            }
-
-            // `usize` is 8 bytes on 64-bit systems
-            let expected_msg_sz_bytes = usize::try_from(u32::from_le_bytes(msg_size_buf)).unwrap();
-            let mut msg_buf = vec![0u8; expected_msg_sz_bytes];
-            let msg_sz_bytes = stdout
-                .read_exact(&mut msg_buf)
-                .await
-                .context(ReadStdoutSnafu)?;
-
-            if msg_sz_bytes != expected_msg_sz_bytes {
-                log::error!(
-                    "Incorrect message length. Expected {} bytes, got {} bytes",
-                    expected_msg_sz_bytes,
-                    msg_sz_bytes
-                );
-                return Err(ContainerError::IncorrectMessageLength {
-                    expected: expected_msg_sz_bytes,
-                    received: msg_sz_bytes,
-                });
-            }
-
-            log::debug!("Deserializing message from stdout");
-            let msg = bincode::deserialize(&msg_buf).context(BincodeSnafu)?;
-            log::debug!(
-                "Received message of size {:?} bytes from stdout, msg: {}",
-                msg_sz_bytes,
-                msg
-            );
-
+        let stdout = BufReader::new(stdout);
+        let decoder = ContainerResponseCodec::new();
+        let mut reader = FramedRead::new(stdout, decoder);
+        while let Some(response) = reader.next().await {
+            let response = response.context(BincodeSnafu)?;
             // Check if the stdout/stderr is too large
-            match &msg {
+            match &response {
                 ContainerResponse::Execute(ExecuteResponse { stdout, stderr, .. }) => {
                     if stdout.len() > STDOUT_ERR_BYTE_LIMIT {
                         log::error!("stdout/stderr too large, killing container");
@@ -378,34 +330,21 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
                     }
                 }
             }
-            child_stdout_tx.send(msg).await.context(SendMessageSnafu)?;
+            child_stdout_tx
+                .send(response)
+                .await
+                .context(SendMessageSnafu)?;
         }
+        Ok(())
     });
 
     // Receive messages from `stdin_receiver`, write to stdin as bytes
     tasks.spawn(async move {
-        let mut stdin = BufWriter::new(stdin);
+        let encoder = ContainerMessageCodec::new();
+        let mut writer = FramedWrite::new(stdin, encoder);
         while let Some(msg) = child_stdin_rx.recv().await {
             log::debug!("Received message `msg` in stdin receiver: {:?}", msg);
-            // Serialize message into buffer, with a 4 byte prefix for the size of the message
-            // as required by `AsyncBincodeReader`:
-            // https://docs.rs/async-bincode/latest/async_bincode/futures/struct.AsyncBincodeReader.html
-            let mut buffer = vec![];
-            // unwrap u32: the size of message will not overflow u32
-            let serialized_size =
-                u32::try_from(bincode::serialized_size(&msg).context(BincodeSnafu)?).unwrap();
-            // Convert u64 to a 4 byte array in little endian
-            let size_bytes: [u8; 4] = serialized_size.to_le_bytes();
-            buffer.extend_from_slice(&size_bytes);
-            bincode::serialize_into(&mut buffer, &msg).context(BincodeSnafu)?;
-            log::debug!(
-                "Sending byte serialized message `msg` to container: {:?}",
-                buffer
-            );
-            stdin.write_all(&buffer).await.unwrap();
-            log::debug!("Wrote message to container");
-            stdin.flush().await.unwrap();
-            log::debug!("Flushed message to container");
+            writer.send(msg).await.context(BincodeSnafu)?;
         }
         log::debug!("stdin receiver finished");
         Ok(())

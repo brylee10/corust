@@ -5,12 +5,12 @@ use env_logger::Target;
 use log::Level;
 use std::io::Write;
 
+pub(crate) mod codec;
 pub mod container;
 pub mod runner;
 
-// Number of bytes reserved to store the message size.
-// Prefixes every message.
-const MESSAGE_BUF_SIZE_BYTES: usize = 4;
+// Number of bytes reserved to store the message size. Prefixes every serialized message.
+const MESSAGE_BUF_SIZE_BYTES: usize = 8;
 
 pub fn init_logger(target: Target) {
     env_logger::builder()
