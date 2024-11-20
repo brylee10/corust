@@ -1,5 +1,8 @@
 import { Box, Tooltip } from "@mui/material";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { darkenRgb } from "../colorUtils";
+import { RootState } from "../../store/store";
+import { useSelector } from "react-redux";
 
 interface UserIconProps {
   key: string;
@@ -10,40 +13,47 @@ interface UserIconProps {
 
 // Represents a single user on the document.
 function UserIcon({ name, color, isSelf }: UserIconProps) {
+  const isDarkMode = useSelector(
+    (state: RootState) => state.displaySelector.dark
+  );
   const [userName, setUserName] = useState(name);
 
-  const styles = {
-    collaborator: {
-      width: 35,
-      borderRadius: "50%",
-      height: 35,
-      marginRight: 5,
-      backgroundColor: color,
-      // Centers text vertically and horizontally
-      lineHeight: "35px",
-      textAlign: "center" as const, // don't widen to a string
-      fontWeight: "bold",
-      color: "whitesmoke",
-      borderWidth: 4,
-      borderColor: color,
-      borderStyle: "solid",
-    },
-    self: {
-      width: 35,
-      borderRadius: "50%",
-      height: 35,
-      marginRight: 5,
-      backgroundColor: "whitesmoke",
-      // Centers text vertically and horizontally
-      lineHeight: "35px",
-      textAlign: "center" as const, // don't widen to a string
-      fontWeight: "bold",
-      color: color,
-      borderWidth: 4,
-      borderColor: color,
-      borderStyle: "solid",
-    },
-  };
+  const styles = useMemo(() => {
+    const darkRgb = darkenRgb(color);
+    const adjustedColor = isDarkMode ? darkRgb : color;
+    return {
+      collaborator: {
+        width: 35,
+        borderRadius: "50%",
+        height: 35,
+        marginRight: 5,
+        backgroundColor: adjustedColor,
+        // Centers text vertically and horizontally
+        lineHeight: "35px",
+        textAlign: "center" as const, // don't widen to a string
+        fontWeight: "bold",
+        color: "#F5F5F5", // whitesmoke
+        borderWidth: 4,
+        borderColor: adjustedColor,
+        borderStyle: "solid",
+      },
+      self: {
+        width: 35,
+        borderRadius: "50%",
+        height: 35,
+        marginRight: 5,
+        backgroundColor: "transparent",
+        // Centers text vertically and horizontally
+        lineHeight: "35px",
+        textAlign: "center" as const, // don't widen to a string
+        fontWeight: "bold",
+        color: adjustedColor,
+        borderWidth: 4,
+        borderColor: adjustedColor,
+        borderStyle: "solid",
+      },
+    };
+  }, [isDarkMode, color]);
 
   useEffect(() => {
     if (isSelf) {

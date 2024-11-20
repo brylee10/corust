@@ -6,29 +6,46 @@ import {
   Box,
   Button,
   Grow,
+  IconButton,
   Snackbar,
   Stack,
   Tooltip,
   styled,
+  useTheme,
 } from "@mui/material";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
 import PeopleIcon from "@mui/icons-material/People";
 import { UserState } from "../../store/slices/userSlice";
+import { useDispatch, useSelector } from "react-redux";
+import { RootState } from "../../store/store";
+import { toggleDarkMode } from "../../store/slices/display";
 
 // Define constants once
-const CustomButton = styled(Button)({
-  padding: "10px 20px",
-  // Rust!
-  backgroundColor: "white",
-  color: "#CE412B",
-  borderRadius: "5px",
-  cursor: "pointer",
-  fontWeight: "bold",
-  lineHeight: "1.25",
-  height: 38,
-  border: "2px solid #CE412B",
-  "&:hover": {
-    backgroundColor: "white",
-  },
+const CustomButton = styled(Button)(({ theme }) => {
+  const isDarkMode = theme.palette.mode === "dark";
+  // Custom darker hover color
+  const lmHoverBackgroundColor = "#00000044";
+  const dmHoverBackgroundColor = "#FFFFFF22";
+  const hoverBackgroundColor = isDarkMode
+    ? dmHoverBackgroundColor
+    : lmHoverBackgroundColor;
+  return {
+    padding: "10px 20px",
+    // Rust!
+    backgroundColor: theme.palette.background.default,
+    // Brighter in dark mode
+    color: theme.palette.primary.main,
+    borderRadius: "5px",
+    cursor: "pointer",
+    fontWeight: "bold",
+    lineHeight: "1.25",
+    height: 38,
+    border: `2px solid ${theme.palette.primary.main}`,
+    "&:hover": {
+      backgroundColor: hoverBackgroundColor,
+    },
+  };
 });
 
 interface HeaderBarProps {
@@ -44,12 +61,36 @@ function HeaderBar({
   userArr,
   currUser,
 }: HeaderBarProps) {
+  const dispatch = useDispatch();
+  const isDarkMode = useSelector(
+    (state: RootState) => state.displaySelector.dark
+  );
+  const theme = useTheme();
   const [openCopyNotification, setOpenCopyNotification] = React.useState(false);
 
   const copyCorustLink = useCallback(() => {
     navigator.clipboard.writeText(window.location.href);
     setOpenCopyNotification(true);
   }, []);
+
+  const renderThemeToggle = useCallback(() => {
+    const toggleIcon = isDarkMode ? <LightModeIcon /> : <DarkModeIcon />;
+    const toolTipTitle = isDarkMode ? "Toggle light mode" : "Toggle dark mode";
+    const darkButtonTheme = {
+      color: theme.palette.grey[200],
+    };
+    const lightButtonTheme = {
+      color: theme.palette.grey[800],
+    };
+    const buttonTheme = isDarkMode ? darkButtonTheme : lightButtonTheme;
+    return (
+      <Tooltip title={toolTipTitle}>
+        <IconButton onClick={() => dispatch(toggleDarkMode())} sx={buttonTheme}>
+          {toggleIcon}
+        </IconButton>
+      </Tooltip>
+    );
+  }, [isDarkMode, dispatch, theme]);
 
   return (
     <>
@@ -58,13 +99,23 @@ function HeaderBar({
           {RunButton}
           {RunConfigButtons}
         </Stack>
-        <Box className="header-right">
+        <Box
+          id="header-right"
+          sx={{
+            display: "flex",
+            flexGrow: "1",
+            justifyContent: "flex-end",
+            alignItems: "center",
+            gap: theme.spacing(1),
+          }}
+        >
           <UserIconList userArr={userArr} currUser={currUser} />
           <Tooltip title="Copy Corust Link">
             <CustomButton onClick={copyCorustLink} startIcon={<PeopleIcon />}>
               Share
             </CustomButton>
           </Tooltip>
+          {renderThemeToggle()}
         </Box>
       </Box>
       <Snackbar

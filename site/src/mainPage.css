@@ -147,13 +147,6 @@
     margin-right: 10px;
 }
 
-.header-right {
-    display: flex;
-    flex-grow: 1;
-    justify-content: flex-end;
-    align-items: center;
-}
-
 /* 
 Dots shift 4 px and fade to 0.1 opacity, offset equally, cycling every 0.6s 
 Credit to: https://dev.to/kirteshbansal/bouncing-dots-loader-in-react-4jng

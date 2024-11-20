@@ -27,7 +27,7 @@ import {
   WsClientTextMsg,
   WsClientTextMsgType,
   WsConfigUpdate,
-} from "../../App.tsx";
+} from "../mainPage.tsx";
 import { selectUserState } from "../../store/slices/userSlice.tsx";
 
 const CustomRunButton = styled(Button)({

@@ -3,7 +3,7 @@ import codeSelectorReducer from "./slices/codeSelectorSlice";
 import cargoCommandReducer from "./slices/cargoCommandSlice";
 import { channelReducer, channelVersionReducer } from "./slices/channelSlice";
 import optReducer from "./slices/optSlice";
-import windowSizeReducer from "./slices/windowSize";
+import displayReducer from "./slices/display";
 import userReducer from "./slices/userSlice";
 import runStatusReducer from "./slices/runStatusSlice";
 
@@ -15,9 +15,9 @@ export const store = configureStore({
     channelSelector: channelReducer,
     channelVersionSelector: channelVersionReducer,
     optSelector: optReducer,
-    windowSize: windowSizeReducer,
+    displaySelector: displayReducer,
     userSelector: userReducer,
-    runStatusSlice: runStatusReducer,
+    runStatusSelector: runStatusReducer,
   },
 });
 

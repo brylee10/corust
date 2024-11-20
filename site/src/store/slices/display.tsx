@@ -7,18 +7,29 @@ import { createSlice } from "@reduxjs/toolkit";
 
 const NARROW_SCREEN_PX = 1600;
 
-const windowSizeSlice = createSlice({
-  name: "windowSize",
+const displaySlice = createSlice({
+  name: "display",
   initialState: {
     isNarrowScreen: false,
+    dark: false,
   },
   reducers: {
     setNarrowScreen: (state, action) => {
       state.isNarrowScreen = action.payload;
     },
+    setDarkMode: (state) => {
+      state.dark = true;
+    },
+    setLightMode: (state) => {
+      state.dark = false;
+    },
+    toggleDarkMode: (state) => {
+      state.dark = !state.dark;
+    },
   },
 });
 
-export const { setNarrowScreen } = windowSizeSlice.actions;
+export const { setNarrowScreen, setDarkMode, setLightMode, toggleDarkMode } =
+  displaySlice.actions;
 export { NARROW_SCREEN_PX };
-export default windowSizeSlice.reducer;
+export default displaySlice.reducer;

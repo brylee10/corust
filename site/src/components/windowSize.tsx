@@ -1,6 +1,6 @@
 import { useDispatch } from "react-redux";
 import { useEffect } from "react";
-import { NARROW_SCREEN_PX, setNarrowScreen } from "../store/slices/windowSize";
+import { NARROW_SCREEN_PX, setNarrowScreen } from "../store/slices/display";
 
 function WindowSizeListener() {
   const dispatch = useDispatch();

@@ -22,12 +22,12 @@ import {
   WsClientTextMsg,
   WsClientTextMsgType,
   WsConfigUpdate,
-} from "../../App";
+} from "../mainPage.tsx";
 import { selectUserState } from "../../store/slices/userSlice";
 
-const ConfigButton = styled(Button)({
+const ConfigButton = styled(Button)(({ theme }) => ({
   padding: "10px 15px",
-  backgroundColor: "#F5EEE3",
+  backgroundColor: theme.palette.secondary.main,
   color: "black",
   border: "none",
   cursor: "pointer",
@@ -35,7 +35,7 @@ const ConfigButton = styled(Button)({
   lineHeight: "1.25",
   height: 38,
   alignSelf: "center",
-});
+}));
 
 const Arrow = styled("div")({
   width: 0,
@@ -134,7 +134,7 @@ const commonButtonStyle = {
   display: "block",
   // Placeholder empty border to prevent button
   // from shrinking when not hovered
-  border: "1px solid #FFFFFF",
+  border: "1px solid transparent",
 };
 
 const commonTypographyStyle = {

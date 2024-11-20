@@ -83,24 +83,27 @@ const initRunStatus = (runType: RunType): RunStatus => {
 };
 
 const RunnerOutput = styled("div")<{ open: boolean; isNarrowScreen: boolean }>(
-  ({ open, isNarrowScreen }) => ({
-    fontSize: 16,
-    borderRadius: 4,
-    background: "#fefaf9",
-    paddingLeft: 10,
-    paddingRight: 10,
-    borderWidth: "thin",
-    borderColor: "#CEA6A0",
-    borderStyle: "solid",
-    display: "flex",
-    flexDirection: open ? "column" : undefined,
-    paddingBottom: open ? 10 : undefined,
-    overflow: open ? "auto" : undefined,
-    flex: open ? 1 : 0,
-    cursor: !open ? "pointer" : undefined,
-    marginTop: !(isNarrowScreen && open) ? 12 : undefined,
-    marginLeft: !isNarrowScreen && !open ? 12 : undefined,
-  })
+  ({ theme, open, isNarrowScreen }) => {
+    const isDarkMode = theme.palette.mode === "dark";
+    return {
+      fontSize: 16,
+      borderRadius: 4,
+      background: isDarkMode ? "transparent" : "#fefaf9",
+      paddingLeft: 10,
+      paddingRight: 10,
+      borderWidth: "thin",
+      borderColor: isDarkMode ? "#CEA6A044" : "#CEA6A0",
+      borderStyle: "solid",
+      display: "flex",
+      flexDirection: open ? "column" : undefined,
+      paddingBottom: open ? 10 : undefined,
+      overflow: open ? "auto" : undefined,
+      flex: open ? 1 : 0,
+      cursor: !open ? "pointer" : undefined,
+      marginTop: !(isNarrowScreen && open) ? 12 : undefined,
+      marginLeft: !isNarrowScreen && !open ? 12 : undefined,
+    };
+  }
 );
 
 const Container = styled("div")<{ open: boolean }>(({ open }) => ({
@@ -141,7 +144,10 @@ function RunOutputDisplay({
   const dispatch = useDispatch();
   const theme = useTheme();
   const isNarrowScreen = useSelector(
-    (state: RootState) => state.windowSize.isNarrowScreen
+    (state: RootState) => state.displaySelector.isNarrowScreen
+  );
+  const isDarkMode = useSelector(
+    (state: RootState) => state.displaySelector.dark
   );
 
   const [stderr, setStderr] = useState<string>("");
@@ -151,7 +157,7 @@ function RunOutputDisplay({
     useState<boolean>(false);
   // Alerts user the output of the compilation was too large
   const showOutputSizeError = useSelector(
-    (state: RootState) => state.runStatusSlice.outputTooLargeOpen
+    (state: RootState) => state.runStatusSelector.outputTooLargeOpen
   );
   // Indicates is running icon
   const [showRunningIcon, setShowRunningIcon] = useState<boolean>(false);
@@ -210,20 +216,34 @@ function RunOutputDisplay({
           )}
           <Box className="runner-output-body">
             <Box className="subtitle">Standard Error</Box>
-            <Box className="content">
+            <Box
+              className="content"
+              sx={{ color: isDarkMode ? "white" : "black" }}
+            >
               <pre>{stderr}</pre>
             </Box>
           </Box>
           <Box className="runner-output-body">
             <Box className="subtitle">Standard Out</Box>
-            <Box className="content">
+            <Box
+              className="content"
+              sx={{ color: isDarkMode ? "white" : "black" }}
+            >
               <pre>{stdout}</pre>
             </Box>
           </Box>
         </Container>
       </RunnerOutput>
     );
-  }, [stderr, stdout, closeOutput, showRunningIcon, isNarrowScreen, open]);
+  }, [
+    stderr,
+    stdout,
+    closeOutput,
+    showRunningIcon,
+    isNarrowScreen,
+    open,
+    isDarkMode,
+  ]);
 
   const renderClosedOutput = useCallback(() => {
     return (

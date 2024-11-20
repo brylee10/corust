@@ -1,5 +1,5 @@
 import { useCallback, useEffect } from "react";
-import App from "../../App.tsx";
+import MainPage from "../mainPage.tsx";
 import { useParams } from "react-router-dom";
 import { Box } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
@@ -92,7 +92,7 @@ function UserJoin() {
   // Explicitly check for equivalence to `undefined` otherwise `userId = 0` is falsey as well
   // one of the few times React StrictMode hid a bug!
   return userState.userId !== undefined && userState.username !== undefined ? (
-    <App currUser={userState as UserStateDefined} />
+    <MainPage currUser={userState as UserStateDefined} />
   ) : (
     <Box>Failed to connect to server</Box>
   );

@@ -9,6 +9,7 @@ use tokio_util::{
 
 use crate::MESSAGE_BUF_SIZE_BYTES;
 
+/// Generic encoder and decoder for length prefixed binary encodings.
 pub struct ContainerCodec<T> {
     _marker: PhantomData<T>,
 }

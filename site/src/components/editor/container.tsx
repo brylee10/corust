@@ -63,7 +63,7 @@ function EditorContainer({
   runStatus,
 }: EditorContainerProps) {
   const isNarrowScreen = useSelector(
-    (state: RootState) => state.windowSize.isNarrowScreen
+    (state: RootState) => state.displaySelector.isNarrowScreen
   );
 
   const renderCargoOutput = useCallback(() => {
