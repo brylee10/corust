@@ -75,7 +75,7 @@ function HeaderBar({
 
   const renderThemeToggle = useCallback(() => {
     const toggleIcon = isDarkMode ? <LightModeIcon /> : <DarkModeIcon />;
-    const toolTipTitle = isDarkMode ? "Toggle light mode" : "Toggle dark mode";
+    const toolTipTitle = isDarkMode ? "Toggle Light" : "Toggle Dark";
     const darkButtonTheme = {
       color: theme.palette.grey[200],
     };
@@ -84,7 +84,7 @@ function HeaderBar({
     };
     const buttonTheme = isDarkMode ? darkButtonTheme : lightButtonTheme;
     return (
-      <Tooltip title={toolTipTitle}>
+      <Tooltip title={toolTipTitle} arrow>
         <IconButton onClick={() => dispatch(toggleDarkMode())} sx={buttonTheme}>
           {toggleIcon}
         </IconButton>
@@ -110,7 +110,7 @@ function HeaderBar({
           }}
         >
           <UserIconList userArr={userArr} currUser={currUser} />
-          <Tooltip title="Copy Corust Link">
+          <Tooltip title="Copy Corust Link" arrow>
             <CustomButton onClick={copyCorustLink} startIcon={<PeopleIcon />}>
               Share
             </CustomButton>

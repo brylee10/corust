@@ -62,7 +62,7 @@ function UserIcon({ name, color, isSelf }: UserIconProps) {
   }, [name, isSelf]);
 
   return (
-    <Tooltip title={userName} placement="bottom">
+    <Tooltip title={userName} placement="bottom" arrow>
       <Box key={name} style={isSelf ? styles.self : styles.collaborator}>
         {name.charAt(0)}
       </Box>

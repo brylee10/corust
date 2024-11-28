@@ -8,6 +8,7 @@ import {
   Typography,
   Popover,
   Grow,
+  useTheme,
 } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import {
@@ -37,16 +38,20 @@ const ConfigButton = styled(Button)(({ theme }) => ({
   alignSelf: "center",
 }));
 
-const Arrow = styled("div")({
-  width: 0,
-  height: 0,
-  borderLeft: "1rem solid transparent",
-  borderRight: "1rem solid transparent",
-  borderBottom: "1rem solid white",
-  position: "absolute",
-  top: "-8px",
-  left: "50%",
-  zIndex: 1,
+const Arrow = styled("div")(({ theme, ...props }) => {
+  const isDarkMode = theme.palette.mode === "dark";
+  const backgroundColor = isDarkMode ? theme.palette.grey[800] : "white";
+  return {
+    ...props,
+    width: 0,
+    height: 0,
+    borderLeft: "1rem solid transparent",
+    borderRight: "1rem solid transparent",
+    borderBottom: `1rem solid ${backgroundColor}`,
+    position: "absolute",
+    top: "-8px",
+    left: "50%",
+  };
 });
 
 const StyledPopover = ({
@@ -56,10 +61,17 @@ const StyledPopover = ({
   onClose,
   children,
 }: StyledPopoverProps) => {
+  const isDarkMode = useSelector(
+    (state: RootState) => state.displaySelector.dark
+  );
+  const theme = useTheme();
   const [arrowPosition, setArrowPosition] = useState<{
     top: number;
     left: number;
   } | null>(null);
+  const [backgroundColor, setBackgroundColor] = useState<string>(
+    theme.palette.grey[50]
+  );
 
   useEffect(() => {
     if (anchorEl && open) {
@@ -67,12 +79,16 @@ const StyledPopover = ({
       const rect = anchorEl.getBoundingClientRect();
       setArrowPosition({
         top: rect.bottom + window.scrollY, // Position arrow just below the anchor
-        left: rect.left + rect.width / 2, // Center the arrow horizontally on the anchor
+        left: rect.left + rect.width / 2 - 16, // Center the arrow horizontally on the anchor
       });
     } else {
       setArrowPosition(null); // Hide arrow when Popover is closed or anchor is unavailable
     }
   }, [anchorEl, open]);
+
+  useEffect(() => {
+    setBackgroundColor(isDarkMode ? theme.palette.grey[800] : "white");
+  }, [isDarkMode, theme]);
 
   return (
     <>
@@ -87,11 +103,11 @@ const StyledPopover = ({
           }}
         >
           <Arrow
+            id="randomid"
             style={{
               top: arrowPosition.top,
               left: arrowPosition.left,
             }}
-            className="arrow"
           />
         </Grow>
       )}
@@ -109,11 +125,13 @@ const StyledPopover = ({
           vertical: "top",
           horizontal: "center",
         }}
+        elevation={1}
         slotProps={{
           paper: {
             sx: {
               mt: "0.75rem",
               overflow: "visible",
+              backgroundColor: backgroundColor,
             },
           },
         }}
@@ -291,7 +309,7 @@ function RunConfigButtons({
   return (
     <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
       <ButtonGroup>
-        <Tooltip title="Optimization Level">
+        <Tooltip title="Optimization Level" arrow>
           <ConfigButton
             variant="contained"
             size="small"
@@ -302,7 +320,10 @@ function RunConfigButtons({
             {optLevel}
           </ConfigButton>
         </Tooltip>
-        <Tooltip title={`Rust ${channel} Channel Version ${channelVersion}`}>
+        <Tooltip
+          title={`Rust ${channel} Channel Version ${channelVersion}`}
+          arrow
+        >
           <ConfigButton
             variant="contained"
             size="small"

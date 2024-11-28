@@ -87,7 +87,7 @@ const RunnerOutput = styled("div")<{ open: boolean; isNarrowScreen: boolean }>(
     const isDarkMode = theme.palette.mode === "dark";
     return {
       fontSize: 16,
-      borderRadius: 4,
+      borderRadius: theme.spacing(0.75),
       background: isDarkMode ? "transparent" : "#fefaf9",
       paddingLeft: 10,
       paddingRight: 10,
@@ -112,6 +112,7 @@ const Container = styled("div")<{ open: boolean }>(({ open }) => ({
   flexDirection: "column",
   flex: 1,
   alignItems: open ? undefined : "center",
+  justifyContent: open ? undefined : "center",
 }));
 
 const TitleContainer = styled("div")({
@@ -201,7 +202,7 @@ function RunOutputDisplay({
           <TitleContainer>
             <TitleOpen isNarrowScreen={isNarrowScreen}>OUTPUT</TitleOpen>
             <Box className="close">
-              <Tooltip title="Close Output">
+              <Tooltip title="Close Output" arrow>
                 <IconButton onClick={closeOutput} size="small">
                   <CloseIcon />
                 </IconButton>
@@ -246,8 +247,13 @@ function RunOutputDisplay({
   ]);
 
   const renderClosedOutput = useCallback(() => {
+    const placement = isNarrowScreen ? "top" : "left";
     return (
-      <Tooltip title="Open output from last execution">
+      <Tooltip
+        title="Open output from last execution"
+        arrow
+        placement={placement}
+      >
         <RunnerOutput
           open={open}
           isNarrowScreen={isNarrowScreen}
@@ -255,14 +261,12 @@ function RunOutputDisplay({
           id={"runner-output-closed"}
         >
           <Container open={open} id={"container-closed"}>
-            <Box>
-              <IconButton
-                size="large"
-                sx={{ color: theme.palette.primary.light }}
-              >
-                <TerminalIcon fontSize="inherit" />
-              </IconButton>
-            </Box>
+            <IconButton
+              size="large"
+              sx={{ color: theme.palette.primary.light }}
+            >
+              <TerminalIcon fontSize="inherit" />
+            </IconButton>
           </Container>
         </RunnerOutput>
       </Tooltip>

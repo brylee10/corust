@@ -82,6 +82,17 @@ const DisabledSelectButton = styled(Button)({
   },
 });
 
+const CodeHighlight = styled("code")(({ theme }) => {
+  const isDarkMode = theme.palette.mode === "dark";
+  const backgroundColor = isDarkMode ? theme.palette.grey[700] : "#f5f5f5";
+  return {
+    backgroundColor: backgroundColor,
+    padding: "2px 4px",
+    borderRadius: "4px",
+    fontFamily: "monospace",
+  };
+});
+
 interface CargoCommandButtonProps {
   cargoCommand: CargoCommand;
   description: React.JSX.Element;
@@ -196,7 +207,7 @@ function RunButton({
     const enabledButton = (
       <>
         <ButtonGroup>
-          <Tooltip title={`${cargoCommandCapitalized} the code`}>
+          <Tooltip title={`${cargoCommandCapitalized} the code`} arrow>
             <CustomRunButton
               variant="contained"
               size="small"
@@ -210,7 +221,7 @@ function RunButton({
               {buttonText}
             </CustomRunButton>
           </Tooltip>
-          <Tooltip title="Select Cargo Command">
+          <Tooltip title="Select Cargo Command" arrow>
             <CustomSelectButton
               variant="contained"
               size="small"
@@ -232,8 +243,7 @@ function RunButton({
               cargoCommand={CargoCommand.Run}
               description={
                 <>
-                  Build and run code (
-                  <code className="code-highlight">cargo run</code>).
+                  Build and run code (<CodeHighlight>cargo run</CodeHighlight>).
                 </>
               }
             />
@@ -241,8 +251,7 @@ function RunButton({
               cargoCommand={CargoCommand.Build}
               description={
                 <>
-                  Build code (
-                  <code className="code-highlight">cargo build</code>
+                  Build code (<CodeHighlight>cargo build</CodeHighlight>
                   ).
                 </>
               }
@@ -252,7 +261,7 @@ function RunButton({
               description={
                 <>
                   Build code and run tests (
-                  <code className="code-highlight">cargo test</code>).
+                  <CodeHighlight>cargo test</CodeHighlight>).
                 </>
               }
             />
@@ -262,7 +271,7 @@ function RunButton({
     );
 
     const disabledButton = (
-      <Tooltip title="Code executing, cannot start simultaneous run.">
+      <Tooltip title="Code executing, cannot start simultaneous run." arrow>
         <ButtonGroup>
           <DisabledRunButton
             variant="contained"

@@ -175,7 +175,7 @@ function Editor({
             tooltip.className = "tooltip";
             tooltip.style.visibility = "hidden";
             tooltip.style.backgroundColor = `${adjustedColor}`;
-            tooltip.style.color = "whitesmoke";
+            tooltip.style.color = "#F5F5F5"; // whitesmoke
             tooltip.style.textAlign = "center";
             tooltip.style.borderRadius = "4px";
             tooltip.style.paddingLeft = "3px";
@@ -432,7 +432,7 @@ function Editor({
   const renderCodeSelectorButtons = useCallback(() => {
     return (
       <>
-        <Tooltip title="Show live code editor">
+        <Tooltip title="Show live code editor" arrow>
           <CodeSelector
             selected={codeTypeSelector === SelectedCodeType.Live}
             onClick={() => dispatch(setLive())}
@@ -444,7 +444,10 @@ function Editor({
             Live
           </CodeSelector>
         </Tooltip>
-        <Tooltip title="Show code that was most recently executed (read only)">
+        <Tooltip
+          title="Show code that was most recently executed (read only)"
+          arrow
+        >
           <CodeSelector
             selected={codeTypeSelector === SelectedCodeType.LastExecution}
             onClick={() => {
@@ -489,7 +492,6 @@ function Editor({
     const liveEditor = (
       <CodeMirror
         id="live-editor"
-        className="editor"
         height="100%"
         extensions={[
           rust(),
@@ -519,7 +521,6 @@ function Editor({
       <CodeMirror
         id="read-only-editor"
         value={lastExecutedCode}
-        className="editor"
         height="100%"
         // Remove rust syntax highlighting to make it visually apparent
         // that the editor is read only
