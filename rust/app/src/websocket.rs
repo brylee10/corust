@@ -627,3 +627,31 @@ pub fn websocket_route(
             },
         )
 }
+
+pub async fn axum_websocket_route(
+    session_map: SharedSessionMap,
+    container_factory: SharedContainerFactory,
+    db_path: PathBuf,
+) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
+    warp::path("websocket")
+        .and(warp::path::param())
+        .and(warp::path::param())
+        .and(warp::ws())
+        .map(
+            move |session_id: String, user_id: UserId, ws: warp::ws::Ws| {
+                let session_map = Arc::clone(&session_map);
+                let container_factory = Arc::clone(&container_factory);
+                let db_path = db_path.clone();
+                ws.on_upgrade(move |ws| {
+                    handle_websocket(
+                        ws,
+                        session_map,
+                        session_id,
+                        user_id,
+                        container_factory,
+                        db_path,
+                    )
+                })
+            },
+        )
+}

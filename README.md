@@ -2,7 +2,7 @@
 
 Corust ("Collaborative Rust") is a Rust collaborative code editor with code execution. Try it out at [corust.dev](https://www.corust.dev/) - it's more fun with friends!
 
-<img src="https://i.imgur.com/FvtzlpI.png" alt="Corust - A collaborative code editor" style="width: 1000px; border-radius: 15px;">
+<img src="https://i.imgur.com/eV9rCUP.png" alt="Corust - A collaborative code editor" style="width: 1000px; border-radius: 15px;">
 
 **Note: This project is still under development.** Improvements include: support for a larger number of concurrent sessions, more Rust compilation modes (beyond a release mode executable) like the Rust Playground, and database-backed session persistence.
 
@@ -39,3 +39,14 @@ In unit tests, the Docker execution environment is replaced with a Rust project 
 
 ## Deployment
 Currently, the Corust frontend is deployed on AWS Amplify and the server and code execution environment are run on AWS EC2 machine.  
+
+## Running Locally
+You can run the frontend (`site`) and backend (`rust`) locally.
+
+The `site/Makefile` specifies commands to run to start the frontend and compile the required Rust components into WASM binaries. 
+```
+# Front end
+cd site
+npm install --production
+make start
+```

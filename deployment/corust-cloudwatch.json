@@ -1,0 +1,29 @@
+{
+    "metrics": {
+        "namespace": "Corust",
+        "metrics_collected": {
+            "procstat": [
+                {
+                "pattern": "corust/rust/target/release",
+                "measurement": [
+                    "pid_count"
+                ],
+                "metrics_collection_interval": 60
+                }
+            ],
+            "mem": {
+                "measurement": [
+                    "mem_used_percent"
+                ],
+                "metrics_collection_interval": 60
+            },
+            "cpu": {
+                "measurement": [
+                  "cpu_usage_active"
+                ],
+                "metrics_collection_interval": 60, 
+                "totalcpu": true
+            }
+        }
+    }
+}

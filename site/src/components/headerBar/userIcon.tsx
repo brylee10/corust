@@ -26,7 +26,7 @@ function UserIcon({ name, color, isSelf }: UserIconProps) {
         width: 35,
         borderRadius: "50%",
         height: 35,
-        marginRight: 5,
+        marginRight: 1,
         backgroundColor: adjustedColor,
         // Centers text vertically and horizontally
         lineHeight: "35px",
@@ -41,7 +41,7 @@ function UserIcon({ name, color, isSelf }: UserIconProps) {
         width: 35,
         borderRadius: "50%",
         height: 35,
-        marginRight: 5,
+        marginRight: 1,
         backgroundColor: "transparent",
         // Centers text vertically and horizontally
         lineHeight: "35px",
@@ -63,7 +63,7 @@ function UserIcon({ name, color, isSelf }: UserIconProps) {
 
   return (
     <Tooltip title={userName} placement="bottom" arrow>
-      <Box key={name} style={isSelf ? styles.self : styles.collaborator}>
+      <Box key={name} sx={isSelf ? styles.self : styles.collaborator}>
         {name.charAt(0)}
       </Box>
     </Tooltip>
