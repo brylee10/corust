@@ -24,3 +24,4 @@ tokio-util              = { version = "0.7", features = ["codec"] }
 [dev-dependencies]
 assertables             = "7.0"
 tempfile                = "3.0"
+rustc_version           = "0.4"

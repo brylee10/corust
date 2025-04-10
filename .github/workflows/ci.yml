@@ -1,4 +1,4 @@
-name: CI
+name: Corust CI
 
 on:
   pull_request:
@@ -32,7 +32,7 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
       - name: Run Clippy
-        run: cargo clippy --all-targets --all-features -- -D warnings
+        run: cd rust && cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run Tests
-        run: cargo test --all
+        run: cd rust && cargo test --all

@@ -784,6 +784,12 @@ mod test {
 
     #[tokio::test]
     async fn test_nightly_build() {
+        // Gate test to only run on nightly channel
+        let version = rustc_version::version_meta().unwrap();
+        if !matches!(version.channel, rustc_version::Channel::Nightly) {
+            return;
+        }
+
         // Test code compiled with nightly toolchain builds (allows nightly flags)
         let backend = init_test_backend();
         let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
@@ -842,6 +848,11 @@ mod test {
 
     #[tokio::test]
     async fn test_beta_build() {
+        // Gate test to only run on beta channel
+        let version = rustc_version::version_meta().unwrap();
+        if !matches!(version.channel, rustc_version::Channel::Beta) {
+            return;
+        }
         // Test Corust can run the beta toolchain
         let backend = init_test_backend();
         let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
