@@ -10,12 +10,12 @@ use rand::Rng;
 use thiserror::Error;
 
 use crate::{
-    network::{
-        transform_cursor, transform_cursor_map, Activity, Component, ComponentId, ComponentKind,
-        CursorMap, CursorPos, CursorTransformError, LocalMessage, Network, NetworkShared,
-        RemoteUpdate, User, UserId,
-    },
     RunConfig, Snapshot,
+    network::{
+        Activity, Component, ComponentId, ComponentKind, CursorMap, CursorPos,
+        CursorTransformError, LocalMessage, Network, NetworkShared, RemoteUpdate, User, UserId,
+        transform_cursor, transform_cursor_map,
+    },
 };
 
 // Increments on each server document update
@@ -311,7 +311,7 @@ impl Server {
 
 fn random_user_id() -> UserId {
     // With 10^13 possible user ids, the chance of a collision in 10k user ids is < 1e-5
-    rand::thread_rng().gen::<UserId>() % 10u64.pow(13)
+    rand::thread_rng().r#gen::<UserId>() % 10u64.pow(13)
 }
 
 #[derive(Debug, Error)]

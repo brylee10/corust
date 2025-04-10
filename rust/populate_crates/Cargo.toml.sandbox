@@ -33,11 +33,6 @@ default-features = true
 features = []
 version = "=1.4.1"
 
-[dependencies.arboard]
-default-features = true
-features = []
-version = "=3.5.0"
-
 [dependencies.arc-swap]
 default-features = true
 features = []
@@ -1048,6 +1043,11 @@ default-features = true
 features = []
 version = "=3.19.1"
 
+[dependencies.tera]
+default-features = true
+features = []
+version = "=1.20.0"
+
 [dependencies.termcolor]
 default-features = true
 features = []
@@ -1221,6 +1221,6 @@ version = "=0.13.3"
 [package]
 authors = ["Corust"]
 description = "Sandbox for Corust"
-edition = "2021"
+edition = "2024"
 name = "corust"
 version = "0.1.0"
