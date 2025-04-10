@@ -1,7 +1,7 @@
 [dependencies.actix-web]
 default-features = true
 features = []
-version = "=4.9.0"
+version = "=4.10.2"
 
 [dependencies.aes]
 default-features = true
@@ -21,7 +21,7 @@ version = "=0.8.11"
 [dependencies.anyhow]
 default-features = true
 features = []
-version = "=1.0.91"
+version = "=1.0.97"
 
 [dependencies.approx]
 default-features = true
@@ -31,12 +31,12 @@ version = "=0.5.1"
 [dependencies.arbitrary]
 default-features = true
 features = []
-version = "=1.3.2"
+version = "=1.4.1"
 
 [dependencies.arboard]
 default-features = true
 features = []
-version = "=3.4.1"
+version = "=3.5.0"
 
 [dependencies.arc-swap]
 default-features = true
@@ -66,7 +66,7 @@ version = "=1.1.1"
 [dependencies.async-std]
 default-features = true
 features = []
-version = "=1.13.0"
+version = "=1.13.1"
 
 [dependencies.async-stream]
 default-features = true
@@ -76,17 +76,17 @@ version = "=0.3.6"
 [dependencies.async-trait]
 default-features = true
 features = []
-version = "=0.1.83"
+version = "=0.1.88"
 
 [dependencies.aws-config]
 default-features = true
 features = []
-version = "=1.5.9"
+version = "=1.6.1"
 
 [dependencies.axum]
 default-features = true
 features = ["http1", "http2", "json", "multipart", "ws"]
-version = "=0.7.7"
+version = "=0.8.3"
 
 [dependencies.backtrace]
 default-features = true
@@ -101,17 +101,17 @@ version = "=0.22.1"
 [dependencies.bincode]
 default-features = true
 features = []
-version = "=1.3.3"
+version = "=2.0.1"
 
 [dependencies.bindgen]
 default-features = true
 features = []
-version = "=0.70.1"
+version = "=0.71.1"
 
 [dependencies.bitflags]
 default-features = true
 features = []
-version = "=2.6.0"
+version = "=2.9.0"
 
 [dependencies.bitvec]
 default-features = true
@@ -126,12 +126,12 @@ version = "=0.10.6"
 [dependencies.blake3]
 default-features = true
 features = []
-version = "=1.5.4"
+version = "=1.8.1"
 
 [dependencies.bytemuck]
 default-features = true
 features = ["extern_crate_alloc", "extern_crate_std", "latest_stable_rust"]
-version = "=1.19.0"
+version = "=1.22.0"
 
 [dependencies.byteorder]
 default-features = true
@@ -141,17 +141,17 @@ version = "=1.5.0"
 [dependencies.bytes]
 default-features = true
 features = []
-version = "=1.8.0"
+version = "=1.10.1"
 
 [dependencies.cargo_metadata]
 default-features = true
 features = []
-version = "=0.18.1"
+version = "=0.19.2"
 
 [dependencies.cc]
 default-features = true
 features = []
-version = "=1.1.31"
+version = "=1.2.18"
 
 [dependencies.cfg-if]
 default-features = true
@@ -161,47 +161,42 @@ version = "=1.0.0"
 [dependencies.chrono]
 default-features = true
 features = ["serde"]
-version = "=0.4.38"
+version = "=0.4.40"
 
 [dependencies.chrono-tz]
 default-features = true
 features = []
-version = "=0.10.0"
+version = "=0.10.3"
 
 [dependencies.clap]
 default-features = true
 features = ["unstable-doc"]
-version = "=4.5.20"
+version = "=4.5.35"
 
 [dependencies.clap_complete]
 default-features = true
 features = []
-version = "=4.5.35"
+version = "=4.5.47"
 
 [dependencies.cmake]
 default-features = true
 features = []
-version = "=0.1.51"
-
-[dependencies.color-eyre]
-default-features = true
-features = []
-version = "=0.6.3"
+version = "=0.1.54"
 
 [dependencies.colored]
 default-features = true
 features = []
-version = "=2.1.0"
+version = "=3.0.0"
 
 [dependencies.config]
 default-features = true
 features = []
-version = "=0.14.1"
+version = "=0.15.11"
 
 [dependencies.console]
 default-features = true
 features = []
-version = "=0.15.8"
+version = "=0.15.11"
 
 [dependencies.console_error_panic_hook]
 default-features = true
@@ -211,7 +206,7 @@ version = "=0.1.7"
 [dependencies.convert_case]
 default-features = true
 features = []
-version = "=0.6.0"
+version = "=0.8.0"
 
 [dependencies.crc32fast]
 default-features = true
@@ -231,32 +226,32 @@ version = "=0.8.4"
 [dependencies.crossbeam-channel]
 default-features = true
 features = []
-version = "=0.5.13"
+version = "=0.5.15"
 
 [dependencies.crossterm]
 default-features = true
 features = []
-version = "=0.28.1"
+version = "=0.29.0"
 
 [dependencies.csv]
 default-features = true
 features = []
-version = "=1.3.0"
+version = "=1.3.1"
 
 [dependencies.ctor]
 default-features = true
 features = []
-version = "=0.2.8"
+version = "=0.4.1"
 
 [dependencies.ctrlc]
 default-features = true
 features = []
-version = "=3.4.5"
+version = "=3.4.6"
 
 [dependencies.darling]
 default-features = true
 features = []
-version = "=0.20.10"
+version = "=0.20.11"
 
 [dependencies.dashmap]
 default-features = true
@@ -266,7 +261,7 @@ version = "=6.1.0"
 [dependencies.data-encoding]
 default-features = true
 features = []
-version = "=2.6.0"
+version = "=2.8.0"
 
 [dependencies.derive_builder]
 default-features = true
@@ -275,8 +270,8 @@ version = "=0.20.2"
 
 [dependencies.derive_more]
 default-features = true
-features = ["full"]
-version = "=1.0.0"
+features = ["full", "std"]
+version = "=2.0.1"
 
 [dependencies.dialoguer]
 default-features = true
@@ -291,12 +286,12 @@ version = "=0.10.7"
 [dependencies.directories]
 default-features = true
 features = []
-version = "=5.0.1"
+version = "=6.0.0"
 
 [dependencies.dirs]
 default-features = true
 features = []
-version = "=5.0.1"
+version = "=6.0.0"
 
 [dependencies.dotenv]
 default-features = true
@@ -311,7 +306,7 @@ version = "=0.15.7"
 [dependencies.dyn-clone]
 default-features = true
 features = []
-version = "=1.0.17"
+version = "=1.0.19"
 
 [dependencies.ed25519-dalek]
 default-features = true
@@ -321,12 +316,12 @@ version = "=2.1.1"
 [dependencies.egui]
 default-features = true
 features = []
-version = "=0.29.1"
+version = "=0.31.1"
 
 [dependencies.either]
 default-features = true
 features = ["serde"]
-version = "=1.13.0"
+version = "=1.15.0"
 
 [dependencies.embedded-hal]
 default-features = true
@@ -341,7 +336,7 @@ version = "=0.8.35"
 [dependencies.env_logger]
 default-features = true
 features = []
-version = "=0.11.5"
+version = "=0.11.8"
 
 [dependencies.eyre]
 default-features = true
@@ -351,12 +346,12 @@ version = "=0.6.12"
 [dependencies.fastrand]
 default-features = true
 features = []
-version = "=2.1.1"
+version = "=2.3.0"
 
 [dependencies.flate2]
 default-features = true
 features = []
-version = "=1.0.34"
+version = "=1.1.1"
 
 [dependencies.flume]
 default-features = true
@@ -386,7 +381,7 @@ version = "=0.3.31"
 [dependencies.futures-lite]
 default-features = true
 features = []
-version = "=2.3.0"
+version = "=2.6.0"
 
 [dependencies.futures-util]
 default-features = true
@@ -396,32 +391,32 @@ version = "=0.3.31"
 [dependencies.getrandom]
 default-features = true
 features = []
-version = "=0.2.15"
+version = "=0.3.2"
 
 [dependencies.git2]
 default-features = true
 features = []
-version = "=0.19.0"
+version = "=0.20.1"
 
 [dependencies.glam]
 default-features = true
 features = []
-version = "=0.29.0"
+version = "=0.30.1"
 
 [dependencies.glob]
 default-features = true
 features = []
-version = "=0.3.1"
+version = "=0.3.2"
 
 [dependencies.handlebars]
 default-features = true
 features = []
-version = "=6.1.0"
+version = "=6.3.2"
 
 [dependencies.hashbrown]
 default-features = true
 features = []
-version = "=0.15.0"
+version = "=0.15.2"
 
 [dependencies.heapless]
 default-features = true
@@ -446,12 +441,12 @@ version = "=0.12.1"
 [dependencies.home]
 default-features = true
 features = []
-version = "=0.5.9"
+version = "=0.5.11"
 
 [dependencies.http]
 default-features = true
 features = []
-version = "=1.1.0"
+version = "=1.3.1"
 
 [dependencies.http-body]
 default-features = true
@@ -461,22 +456,22 @@ version = "=1.0.1"
 [dependencies.http-body-util]
 default-features = true
 features = []
-version = "=0.1.2"
+version = "=0.1.3"
 
 [dependencies.humantime]
 default-features = true
 features = []
-version = "=2.1.0"
+version = "=2.2.0"
 
 [dependencies.hyper]
 default-features = true
 features = ["full"]
-version = "=1.5.0"
+version = "=1.6.0"
 
 [dependencies.hyper-util]
 default-features = true
 features = []
-version = "=0.1.9"
+version = "=0.1.11"
 
 [dependencies.ignore]
 default-features = true
@@ -486,47 +481,47 @@ version = "=0.4.23"
 [dependencies.image]
 default-features = true
 features = []
-version = "=0.25.4"
+version = "=0.25.6"
 
 [dependencies.indexmap]
 default-features = true
 features = []
-version = "=2.6.0"
+version = "=2.9.0"
 
 [dependencies.indicatif]
 default-features = true
 features = []
-version = "=0.17.8"
+version = "=0.17.11"
 
 [dependencies.indoc]
 default-features = true
 features = []
-version = "=2.0.5"
+version = "=2.0.6"
 
 [dependencies.insta]
 default-features = true
 features = []
-version = "=1.40.0"
+version = "=1.42.2"
 
 [dependencies.itertools]
 default-features = true
 features = []
-version = "=0.13.0"
+version = "=0.14.0"
 
 [dependencies.itoa]
 default-features = true
 features = []
-version = "=1.0.11"
+version = "=1.0.15"
 
 [dependencies.js-sys]
 default-features = true
 features = []
-version = "=0.3.72"
+version = "=0.3.77"
 
 [dependencies.jsonwebtoken]
 default-features = true
 features = []
-version = "=9.3.0"
+version = "=9.3.1"
 
 [dependencies.lazy_static]
 default-features = true
@@ -536,27 +531,27 @@ version = "=1.5.0"
 [dependencies.libc]
 default-features = true
 features = []
-version = "=0.2.161"
+version = "=0.2.171"
 
 [dependencies.libloading]
 default-features = true
 features = []
-version = "=0.8.5"
+version = "=0.8.6"
 
 [dependencies.libm]
 default-features = true
 features = []
-version = "=0.2.8"
+version = "=0.2.11"
 
 [dependencies.log]
 default-features = true
 features = []
-version = "=0.4.22"
+version = "=0.4.27"
 
 [dependencies.lru]
 default-features = true
 features = []
-version = "=0.12.5"
+version = "=0.13.0"
 
 [dependencies.maplit]
 default-features = true
@@ -576,7 +571,7 @@ version = "=0.9.5"
 [dependencies.miette]
 default-features = true
 features = []
-version = "=7.2.0"
+version = "=7.5.0"
 
 [dependencies.mime]
 default-features = true
@@ -591,22 +586,22 @@ version = "=2.0.5"
 [dependencies.mockall]
 default-features = true
 features = []
-version = "=0.13.0"
+version = "=0.13.1"
 
 [dependencies.mockito]
 default-features = true
 features = []
-version = "=1.5.0"
+version = "=1.7.0"
 
 [dependencies.nalgebra]
 default-features = true
 features = []
-version = "=0.33.1"
+version = "=0.33.2"
 
 [dependencies.native-tls]
 default-features = true
 features = []
-version = "=0.2.12"
+version = "=0.2.14"
 
 [dependencies.ndarray]
 default-features = true
@@ -621,12 +616,12 @@ version = "=0.29.0"
 [dependencies.nom]
 default-features = true
 features = []
-version = "=7.1.3"
+version = "=8.0.0"
 
 [dependencies.notify]
 default-features = true
 features = []
-version = "=7.0.0"
+version = "=8.0.0"
 
 [dependencies.num]
 default-features = true
@@ -661,22 +656,22 @@ version = "=0.7.3"
 [dependencies.once_cell]
 default-features = true
 features = []
-version = "=1.20.2"
+version = "=1.21.3"
 
 [dependencies.opentelemetry]
 default-features = true
 features = []
-version = "=0.26.0"
+version = "=0.29.1"
 
 [dependencies.ordered-float]
 default-features = true
 features = []
-version = "=4.4.0"
+version = "=5.0.0"
 
 [dependencies.owo-colors]
 default-features = true
 features = []
-version = "=4.1.0"
+version = "=4.2.0"
 
 [dependencies.parking_lot]
 default-features = true
@@ -691,7 +686,7 @@ version = "=1.0.15"
 [dependencies.pathdiff]
 default-features = true
 features = []
-version = "=0.2.2"
+version = "=0.2.3"
 
 [dependencies.percent-encoding]
 default-features = true
@@ -701,42 +696,42 @@ version = "=2.3.1"
 [dependencies.pest]
 default-features = true
 features = []
-version = "=2.7.14"
+version = "=2.8.0"
 
 [dependencies.pest_derive]
 default-features = true
 features = []
-version = "=2.7.14"
+version = "=2.8.0"
 
 [dependencies.petgraph]
 default-features = true
 features = []
-version = "=0.6.5"
+version = "=0.8.1"
 
 [dependencies.phf]
 default-features = true
 features = ["macros"]
-version = "=0.11.2"
+version = "=0.11.3"
 
 [dependencies.pin-project]
 default-features = true
 features = []
-version = "=1.1.7"
+version = "=1.1.10"
 
 [dependencies.pin-project-lite]
 default-features = true
 features = []
-version = "=0.2.15"
+version = "=0.2.16"
 
 [dependencies.pkg-config]
 default-features = true
 features = []
-version = "=0.3.31"
+version = "=0.3.32"
 
 [dependencies.predicates]
 default-features = true
 features = []
-version = "=3.1.2"
+version = "=3.1.3"
 
 [dependencies.pretty_assertions]
 default-features = true
@@ -751,47 +746,47 @@ version = "=0.5.0"
 [dependencies.prettyplease]
 default-features = true
 features = ["verbatim"]
-version = "=0.2.25"
+version = "=0.2.32"
 
 [dependencies.proc-macro2]
 default-features = true
 features = ["span-locations"]
-version = "=1.0.89"
+version = "=1.0.94"
 
 [dependencies.proptest]
 default-features = true
 features = []
-version = "=1.5.0"
+version = "=1.6.0"
 
 [dependencies.prost]
 default-features = true
 features = []
-version = "=0.13.3"
+version = "=0.13.5"
 
 [dependencies.prost-build]
 default-features = true
 features = []
-version = "=0.13.3"
+version = "=0.13.5"
 
 [dependencies.prost-types]
 default-features = true
 features = []
-version = "=0.13.3"
+version = "=0.13.5"
 
 [dependencies.pulldown-cmark]
 default-features = true
 features = []
-version = "=0.12.2"
+version = "=0.13.0"
 
 [dependencies.pyo3]
 default-features = true
 features = []
-version = "=0.22.5"
+version = "=0.24.1"
 
 [dependencies.quick-xml]
 default-features = true
 features = []
-version = "=0.36.2"
+version = "=0.37.4"
 
 [dependencies.quickcheck]
 default-features = true
@@ -801,27 +796,27 @@ version = "=1.0.3"
 [dependencies.quote]
 default-features = true
 features = []
-version = "=1.0.37"
+version = "=1.0.40"
 
 [dependencies.rand]
 default-features = true
-features = ["serde1", "small_rng"]
-version = "=0.8.5"
+features = ["serde", "small_rng"]
+version = "=0.9.0"
 
 [dependencies.rand_chacha]
 default-features = true
 features = []
-version = "=0.3.1"
+version = "=0.9.0"
 
 [dependencies.rand_core]
 default-features = true
-features = ["alloc", "getrandom", "serde", "serde1", "std"]
-version = "=0.6.4"
+features = ["os_rng", "serde", "std"]
+version = "=0.9.3"
 
 [dependencies.rand_distr]
 default-features = true
 features = []
-version = "=0.4.3"
+version = "=0.5.1"
 
 [dependencies.ratatui]
 default-features = true
@@ -836,12 +831,12 @@ version = "=1.10.0"
 [dependencies.rcgen]
 default-features = true
 features = []
-version = "=0.13.1"
+version = "=0.13.2"
 
 [dependencies.redis]
 default-features = true
 features = []
-version = "=0.27.5"
+version = "=0.29.5"
 
 [dependencies.regex]
 default-features = true
@@ -851,12 +846,12 @@ version = "=1.11.1"
 [dependencies.reqwest]
 default-features = true
 features = ["blocking", "cookies", "json", "multipart"]
-version = "=0.12.8"
+version = "=0.12.15"
 
 [dependencies.ring]
 default-features = true
 features = []
-version = "=0.17.8"
+version = "=0.17.14"
 
 [dependencies.rmp-serde]
 default-features = true
@@ -866,7 +861,7 @@ version = "=1.3.0"
 [dependencies.ron]
 default-features = true
 features = []
-version = "=0.8.1"
+version = "=0.10.1"
 
 [dependencies.rpassword]
 default-features = true
@@ -876,32 +871,32 @@ version = "=7.3.1"
 [dependencies.rsa]
 default-features = true
 features = []
-version = "=0.9.6"
+version = "=0.9.8"
 
 [dependencies.rstest]
 default-features = true
 features = []
-version = "=0.23.0"
+version = "=0.25.0"
 
 [dependencies.rusqlite]
 default-features = true
 features = ["bundled-full"]
-version = "=0.32.1"
+version = "=0.34.0"
 
 [dependencies.rust-embed]
 default-features = true
 features = []
-version = "=8.5.0"
+version = "=8.6.0"
 
 [dependencies.rust_decimal]
 default-features = true
 features = []
-version = "=1.36.0"
+version = "=1.37.1"
 
 [dependencies.rustc-hash]
 default-features = true
 features = []
-version = "=2.0.0"
+version = "=2.1.1"
 
 [dependencies.rustc_version]
 default-features = true
@@ -911,7 +906,7 @@ version = "=0.4.1"
 [dependencies.rustls]
 default-features = true
 features = []
-version = "=0.23.15"
+version = "=0.23.25"
 
 [dependencies.rustls-pemfile]
 default-features = true
@@ -921,22 +916,22 @@ version = "=2.2.0"
 [dependencies.rustversion]
 default-features = true
 features = []
-version = "=1.0.18"
+version = "=1.0.20"
 
 [dependencies.schemars]
 default-features = true
 features = []
-version = "=0.8.21"
+version = "=0.8.22"
 
 [dependencies.semver]
 default-features = true
-features = []
-version = "=1.0.23"
+features = ["serde"]
+version = "=1.0.26"
 
 [dependencies.serde]
 default-features = true
 features = ["derive", "rc"]
-version = "=1.0.213"
+version = "=1.0.219"
 
 [dependencies.serde-wasm-bindgen]
 default-features = true
@@ -946,17 +941,17 @@ version = "=0.6.5"
 [dependencies.serde_bytes]
 default-features = true
 features = []
-version = "=0.11.15"
+version = "=0.11.17"
 
 [dependencies.serde_json]
 default-features = true
-features = ["raw_value"]
-version = "=1.0.132"
+features = ["float_roundtrip", "raw_value", "unbounded_depth"]
+version = "=1.0.140"
 
 [dependencies.serde_repr]
 default-features = true
 features = []
-version = "=0.1.19"
+version = "=0.1.20"
 
 [dependencies.serde_urlencoded]
 default-features = true
@@ -966,12 +961,12 @@ version = "=0.7.1"
 [dependencies.serde_with]
 default-features = true
 features = []
-version = "=3.11.0"
+version = "=3.12.0"
 
 [dependencies.serial_test]
 default-features = true
 features = []
-version = "=3.1.1"
+version = "=3.2.0"
 
 [dependencies.sha1]
 default-features = true
@@ -1001,17 +996,12 @@ version = "=0.3.17"
 [dependencies.smallvec]
 default-features = true
 features = []
-version = "=1.13.2"
+version = "=1.15.0"
 
 [dependencies.socket2]
 default-features = true
 features = ["all"]
-version = "=0.5.7"
-
-[dependencies.sqlx]
-default-features = true
-features = []
-version = "=0.8.2"
+version = "=0.5.9"
 
 [dependencies.static_assertions]
 default-features = true
@@ -1021,12 +1011,12 @@ version = "=1.1.0"
 [dependencies.strum]
 default-features = true
 features = []
-version = "=0.26.3"
+version = "=0.27.1"
 
 [dependencies.strum_macros]
 default-features = true
 features = []
-version = "=0.26.4"
+version = "=0.27.1"
 
 [dependencies.subtle]
 default-features = true
@@ -1036,27 +1026,27 @@ version = "=2.6.1"
 [dependencies.syn]
 default-features = true
 features = ["extra-traits", "fold", "full", "visit", "visit-mut"]
-version = "=2.0.85"
+version = "=2.0.100"
 
 [dependencies.sysinfo]
 default-features = true
 features = []
-version = "=0.32.0"
+version = "=0.34.2"
 
 [dependencies.tabled]
 default-features = true
 features = []
-version = "=0.16.0"
+version = "=0.18.0"
 
 [dependencies.tar]
 default-features = true
 features = []
-version = "=0.4.42"
+version = "=0.4.44"
 
 [dependencies.tempfile]
 default-features = true
 features = []
-version = "=3.13.0"
+version = "=3.19.1"
 
 [dependencies.termcolor]
 default-features = true
@@ -1071,27 +1061,27 @@ version = "=3.3.1"
 [dependencies.textwrap]
 default-features = true
 features = []
-version = "=0.16.1"
+version = "=0.16.2"
 
 [dependencies.thiserror]
 default-features = true
 features = []
-version = "=1.0.65"
+version = "=2.0.12"
 
 [dependencies.tokio]
 default-features = true
 features = ["full", "test-util"]
-version = "=1.41.0"
+version = "=1.44.2"
 
 [dependencies.tokio-rustls]
 default-features = true
 features = []
-version = "=0.26.0"
+version = "=0.26.2"
 
 [dependencies.tokio-stream]
 default-features = true
 features = []
-version = "=0.1.16"
+version = "=0.1.17"
 
 [dependencies.tokio-test]
 default-features = true
@@ -1101,57 +1091,57 @@ version = "=0.4.4"
 [dependencies.tokio-tungstenite]
 default-features = true
 features = []
-version = "=0.24.0"
+version = "=0.26.2"
 
 [dependencies.tokio-util]
 default-features = true
 features = ["full"]
-version = "=0.7.12"
+version = "=0.7.14"
 
 [dependencies.toml]
 default-features = true
 features = []
-version = "=0.8.19"
+version = "=0.8.20"
 
 [dependencies.toml_edit]
 default-features = true
 features = []
-version = "=0.22.22"
+version = "=0.22.24"
 
 [dependencies.tonic]
 default-features = true
 features = []
-version = "=0.12.3"
+version = "=0.13.0"
 
 [dependencies.tonic-build]
 default-features = true
 features = []
-version = "=0.12.3"
+version = "=0.13.0"
 
 [dependencies.tower]
 default-features = true
 features = ["full"]
-version = "=0.5.1"
+version = "=0.5.2"
 
 [dependencies.tower-http]
 default-features = true
 features = ["full"]
-version = "=0.6.1"
+version = "=0.6.2"
 
 [dependencies.tracing]
 default-features = true
 features = []
-version = "=0.1.40"
+version = "=0.1.41"
 
 [dependencies.tracing-subscriber]
 default-features = true
 features = []
-version = "=0.3.18"
+version = "=0.3.19"
 
 [dependencies.trybuild]
 default-features = true
 features = []
-version = "=1.0.101"
+version = "=1.0.104"
 
 [dependencies.unicode-segmentation]
 default-features = true
@@ -1166,12 +1156,12 @@ version = "=0.2.0"
 [dependencies.ureq]
 default-features = true
 features = []
-version = "=2.10.1"
+version = "=3.0.10"
 
 [dependencies.url]
 default-features = true
 features = ["serde"]
-version = "=2.5.2"
+version = "=2.5.4"
 
 [dependencies.urlencoding]
 default-features = true
@@ -1181,7 +1171,7 @@ version = "=2.1.3"
 [dependencies.uuid]
 default-features = true
 features = ["serde", "v1", "v3", "v4", "v5", "v6", "v7", "v8"]
-version = "=1.11.0"
+version = "=1.16.0"
 
 [dependencies.walkdir]
 default-features = true
@@ -1191,47 +1181,27 @@ version = "=2.5.0"
 [dependencies.wasm-bindgen]
 default-features = true
 features = []
-version = "=0.2.95"
+version = "=0.2.100"
 
 [dependencies.wasm-bindgen-futures]
 default-features = true
 features = []
-version = "=0.4.45"
+version = "=0.4.50"
 
 [dependencies.web-sys]
 default-features = true
 features = []
-version = "=0.3.72"
+version = "=0.3.77"
 
 [dependencies.webpki-roots]
 default-features = true
 features = []
-version = "=0.26.6"
+version = "=0.26.8"
 
 [dependencies.which]
 default-features = true
 features = []
-version = "=6.0.3"
-
-[dependencies.winapi]
-default-features = true
-features = []
-version = "=0.3.9"
-
-[dependencies.windows]
-default-features = true
-features = []
-version = "=0.58.0"
-
-[dependencies.windows-sys]
-default-features = true
-features = []
-version = "=0.59.0"
-
-[dependencies.winit]
-default-features = true
-features = []
-version = "=0.30.5"
+version = "=7.0.3"
 
 [dependencies.zeroize]
 default-features = true
@@ -1241,12 +1211,12 @@ version = "=1.8.1"
 [dependencies.zip]
 default-features = true
 features = []
-version = "=2.2.0"
+version = "=2.6.1"
 
 [dependencies.zstd]
 default-features = true
 features = []
-version = "=0.13.2"
+version = "=0.13.3"
 
 [package]
 authors = ["Corust"]

@@ -67,4 +67,4 @@ RUN cargo build --release
 RUN cargo build
 RUN rm src/*.rs
 
-ENTRYPOINT ["/corust/tools/entrypoint.sh"]
+ENTRYPOINT ["bash"]

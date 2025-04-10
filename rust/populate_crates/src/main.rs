@@ -33,6 +33,19 @@ lazy_static! {
         HashMap::from([("derive_more", "full")]);
 }
 
+/// Ignore relatively less popular crates (measured by number of downloads) which have dependency conflicts with other top crates
+/// color-eyre (1M): does not support the recent backtrace crate (10M) (v0.3.74) due to missing `gimli-symbolize` feature which was present in 0.3.48, may be a semver issue in backtrace
+/// sqlx and rusqlite both require native library links to different versions of libsqlite3-sys, use the more popular sqlx crate
+/// windows related crates are not supported in the sandbox since it runs on linux
+const BLACKLIST_CRATES: &[&str] = &[
+    "color-eyre",
+    "sqlx",
+    "winit",
+    "windows-sys",
+    "windows",
+    "winapi",
+];
+
 #[derive(StructOpt, Debug)]
 #[structopt(
     name = "populate_crates",
@@ -87,6 +100,7 @@ struct CargoResources<'gctx> {
 fn init_cargo_resources(ctx: &GlobalContext, invalid_cache: bool) -> Result<CargoResources> {
     // On Cargo `CacheLocker`: https://docs.rs/cargo/0.80.0/cargo/util/cache_lock/index.html
     let _lock = ctx.acquire_package_cache_lock(CacheLockMode::DownloadExclusive)?;
+    // github.com/rust-lang/crates.io-index
     let crates_io_source = SourceId::crates_io(ctx)?;
     let yanked_whitelist = HashSet::new();
     // Get data from the the default remote `crates.io` registry
@@ -132,6 +146,8 @@ fn fetch_top_crate_names(num_crates: usize) -> Result<Vec<String>> {
     log::info!("Total crates fetched: {}", crate_names.len());
     log::info!("Filtering top {} crates", num_crates);
     crate_names.truncate(num_crates);
+
+    crate_names.retain(|name| !BLACKLIST_CRATES.contains(&name.as_str()));
     Ok(crate_names)
 }
 
@@ -210,7 +226,6 @@ fn main() -> Result<(), Box<dyn Error>> {
     // Various metadata for Cargo (e.g. local Cargo installation)
     let ctx = GlobalContext::default()?;
     let mut cargo_resources = init_cargo_resources(&ctx, opt.invalid_cache)?;
-
     let top_crate_names = fetch_top_crate_names(opt.num_crates)?;
     let mut crates = Vec::new();
     for (idx, name) in top_crate_names.iter().enumerate() {
@@ -301,7 +316,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // Number of unique crates should match the number of crates fetched
     let unique_crates: HashSet<&str> = crates.iter().map(|c| c.name.as_str()).collect();
-    assert_eq!(unique_crates.len(), opt.num_crates);
+    assert_eq!(unique_crates.len(), opt.num_crates - BLACKLIST_CRATES.len());
 
     for c in crates {
         dependencies.insert(c.name.to_string(), Value::try_from(c).unwrap());
