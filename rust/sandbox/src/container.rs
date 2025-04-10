@@ -4,8 +4,8 @@
 use std::{
     process::Stdio,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -20,7 +20,7 @@ use snafu::{OptionExt, ResultExt, Snafu};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
-    sync::{mpsc, OwnedSemaphorePermit, Semaphore},
+    sync::{OwnedSemaphorePermit, Semaphore, mpsc},
     task::JoinSet,
 };
 use tokio_util::codec::{FramedRead, FramedWrite};
@@ -398,7 +398,7 @@ mod test {
     use assertables::assert_contains_as_result;
     use corust_types::{CargoCommand, ExecuteCommand, OptLevel, TargetType};
     use env_logger::Target;
-    use tempfile::{tempdir, TempDir};
+    use tempfile::{TempDir, tempdir};
 
     use crate::init_logger;
 
@@ -419,7 +419,7 @@ mod test {
     impl TestContainerBackend {
         fn new(temp_dir: TempDir, test_project_dir: PathBuf) -> Self {
             INIT_ENV_LOGGER.call_once(|| {
-                init_logger(Target::Stdout);
+                init_logger(Target::Stdout, "info".to_string());
             });
 
             INIT_TEST_RUNNER.call_once(|| {
@@ -834,6 +834,59 @@ mod test {
             ContainerResponse::Execute(response) => {
                 let stderr = String::from_utf8_lossy(&response.stderr);
                 assert_contains!(stderr, "Finished `release` profile");
+                let exit_code = response.exit_code.unwrap();
+                assert_eq!(exit_code, 0);
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_beta_build() {
+        // Test Corust can run the beta toolchain
+        let backend = init_test_backend();
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
+        let container = container_factory.create_container(backend).await.unwrap();
+        let ContainerRunRet {
+            mut child,
+            mut child_io,
+        } = container.run(Channel::Beta).await.unwrap();
+
+        let execute_command = ExecuteCommand::new(
+            "fn main() {
+                if let Ok(toolchain) = std::env::var(\"RUSTUP_TOOLCHAIN\") {
+                    println!(\"{}\", toolchain);
+                }
+            }"
+            .to_string(),
+            TargetType::Binary,
+            CargoCommand::Run,
+            OptLevel::Release,
+            Channel::Beta,
+        );
+
+        let message = ContainerMessage::Execute(execute_command);
+        child_io
+            .child_stdin_tx
+            .as_ref()
+            .unwrap()
+            .send(message)
+            .await
+            .unwrap();
+
+        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        assert!(exit_code.success());
+
+        // Get the last value
+        let mut response: Option<ContainerResponse> = None;
+        while let Some(value) = child_io.child_stdout_rx.recv().await {
+            response = Some(value);
+        }
+        let response = response.unwrap();
+        assert!(matches!(response, ContainerResponse::Execute(_)));
+        match response {
+            ContainerResponse::Execute(response) => {
+                let stdout = String::from_utf8_lossy(&response.stdout);
+                assert_contains!(stdout, "beta");
                 let exit_code = response.exit_code.unwrap();
                 assert_eq!(exit_code, 0);
             }

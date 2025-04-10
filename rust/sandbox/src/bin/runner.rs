@@ -1,12 +1,12 @@
 // Inspiration taken from Rust Playground `worker.rs`:
 // https://github.com/rust-lang/rust-playground/blob/main/compiler/base/orchestrator/src/worker.rs
 
-use corust_sandbox::container::{execute_command_to_command, IO_COMPONENT_CHANNEL_SIZE};
+use corust_sandbox::container::{IO_COMPONENT_CHANNEL_SIZE, execute_command_to_command};
 use corust_sandbox::init_logger;
 use corust_sandbox::runner::{
-    create_runner_io_component, JoinTaskSnafu, ReadStdoutSnafu, Result, RunnerError,
-    RunnerIoComponent, SendResponseSnafu, SpawnChildSnafu, StderrCaptureSnafu, StdoutCaptureSnafu,
-    WaitChildSnafu, WriteCodeSnafu,
+    JoinTaskSnafu, ReadStdoutSnafu, Result, RunnerError, RunnerIoComponent, SendResponseSnafu,
+    SpawnChildSnafu, StderrCaptureSnafu, StdoutCaptureSnafu, WaitChildSnafu, WriteCodeSnafu,
+    create_runner_io_component,
 };
 use corust_types::{
     ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse, TargetType,
@@ -20,8 +20,8 @@ use std::{env, process::Stdio};
 use tokio::io::{AsyncReadExt, BufReader};
 use tokio::join;
 use tokio::process::Command;
-use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::sync::Mutex;
+use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::task::JoinHandle;
 
 // Number of bytes to read from child stdout and stderr at a time
@@ -92,11 +92,13 @@ async fn listen<P: AsRef<Path>>(
     stdin_res?;
     // No longer receive messages from stdin because stdin_rx is closed
     runner_io_component.stdin_handle.abort();
-    assert!(runner_io_component
-        .stdin_handle
-        .await
-        .unwrap_err()
-        .is_cancelled());
+    assert!(
+        runner_io_component
+            .stdin_handle
+            .await
+            .unwrap_err()
+            .is_cancelled()
+    );
     Ok(())
 }
 
@@ -218,8 +220,12 @@ async fn handle_execute_cmd<P: AsRef<Path>>(
     let res = tokio::try_join!(stdout_handle, stderr_handle);
     match res {
         Ok((stdout_res, stderr_res)) => {
-            stdout_res?;
-            stderr_res?;
+            if stdout_res.is_err() {
+                log::error!("Error reading stdout: {:?}", stdout_res.err());
+            }
+            if stderr_res.is_err() {
+                log::error!("Error reading stderr: {:?}", stderr_res.err());
+            }
         }
         Err(e) => {
             log::error!("Error reading stdout/stderr: {:?}", e);
@@ -233,11 +239,13 @@ async fn handle_execute_cmd<P: AsRef<Path>>(
 #[snafu::report]
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Initialize env logger, writes to stderr
-    init_logger(Target::Stderr);
     let project_dir = env::args_os()
         .nth(1)
         .expect("Please specify Rust project directory as the first argument");
+    let log_level = env::args_os().nth(2).unwrap_or("info".to_string().into());
+
+    // Initialize env logger, writes to stderr
+    init_logger(Target::Stderr, log_level.to_string_lossy().into_owned());
 
     // Channel which roduces output from stdin to a channel and sends to stdout
     // Read from stdin to get serialized [`ContainerMessage`]s, write serialized [`ContainerResponse`] to stdout

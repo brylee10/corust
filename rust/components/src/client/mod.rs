@@ -23,23 +23,23 @@ use rate_limiter::{RateLimiter, RateLimiterError};
 
 #[cfg(feature = "js")]
 use crate::web_utils::{self, debug};
+use crate::{BroadcastLocalDocUpdate, Snapshot};
 use crate::{
-    network::{
-        transform_cursor, transform_cursor_map, CursorMap, CursorPos, CursorTransformError,
-        TextOpAndCursorMap, UserId,
-    },
     ClientResponse, ClientResponseData, ClientResponseType, RemoteDocUpdate,
+    network::{
+        CursorMap, CursorPos, CursorTransformError, TextOpAndCursorMap, UserId, transform_cursor,
+        transform_cursor_map,
+    },
 };
 use crate::{
+    ServerMessage,
     network::{
         Component, ComponentId, ComponentKind, LocalMessage, Network, NetworkShared, RemoteUpdate,
     },
     server::StateId as ServerStateId,
-    ServerMessage,
 };
-use crate::{BroadcastLocalDocUpdate, Snapshot};
 use corust_transforms::xforms::{
-    self, text_operation_text_updates, text_update_from_doc, TextOperation,
+    self, TextOperation, text_operation_text_updates, text_update_from_doc,
 };
 use corust_transforms::{ops, xforms::TextUpdate};
 use std::collections::hash_map::Entry;
@@ -149,9 +149,7 @@ pub enum ClientError {
         #[source]
         source: RateLimiterError,
     },
-    #[error(
-        "You're writing a lot! Total characters changed exceeded rate limit ({rate_limit}/s)."
-    )]
+    #[error("You're writing a lot! Total characters changed exceeded rate limit ({rate_limit}/s).")]
     DocCharChangeLimiter {
         rate_limit: usize,
         #[source]
@@ -916,12 +914,14 @@ mod tests {
             std::thread::sleep(std::time::Duration::from_secs(1));
 
             let op = CompoundOp::Retain { count: 0 };
-            assert!(dbg!(client.update_document(
-                "",
-                TextOperation::from_ops(std::iter::once(op), None, false),
-                &CursorPos::default(),
-            ))
-            .is_ok());
+            assert!(
+                dbg!(client.update_document(
+                    "",
+                    TextOperation::from_ops(std::iter::once(op), None, false),
+                    &CursorPos::default(),
+                ))
+                .is_ok()
+            );
         }
 
         #[test]
@@ -932,7 +932,9 @@ mod tests {
             // This will almost certainly panic, given the max doc size change 10 and the sending interval
             // is a tight loop
             for _ in 0..1000 {
-                let op = CompoundOp::Insert { text: format!("a") };
+                let op = CompoundOp::Insert {
+                    text: "a".to_string(),
+                };
                 client
                     .update_document(
                         "a",

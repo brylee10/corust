@@ -12,7 +12,15 @@ pub mod runner;
 // Number of bytes reserved to store the message size. Prefixes every serialized message.
 const MESSAGE_BUF_SIZE_BYTES: usize = 8;
 
-pub fn init_logger(target: Target) {
+pub fn init_logger(target: Target, log_level: String) {
+    let log_level = match log_level.to_lowercase().as_str() {
+        "error" => log::LevelFilter::Error,
+        "warn" => log::LevelFilter::Warn,
+        "info" => log::LevelFilter::Info,
+        "debug" => log::LevelFilter::Debug,
+        "trace" => log::LevelFilter::Trace,
+        _ => panic!("Invalid log level: {}", log_level),
+    };
     env_logger::builder()
         .format(|buf, record| {
             let level = match record.level() {
@@ -32,7 +40,7 @@ pub fn init_logger(target: Target) {
                 record.args()
             )
         })
-        .filter_level(log::LevelFilter::Debug)
+        .filter_level(log_level)
         .target(target)
         .init();
 }

@@ -1,8 +1,8 @@
 use std::{
     process::ExitStatus,
     sync::{
-        atomic::{AtomicBool, Ordering},
         Arc,
+        atomic::{AtomicBool, Ordering},
     },
 };
 
@@ -18,7 +18,7 @@ use strum::{EnumIter, EnumString};
 use thiserror::Error;
 use tokio::sync::{
     broadcast,
-    mpsc::{error::SendError, Sender},
+    mpsc::{Sender, error::SendError},
 };
 use warp::filters::ws::Message;
 
@@ -156,7 +156,10 @@ impl RunProgressNotifier {
         log::debug!("Acquired session lock in run_code");
         let concurrent_run_checker = self.session.concurrent_run_checker();
         if let Err(e) = concurrent_run_checker.compare_exchange(self.run_type, false, true) {
-            assert!(e, "Concurrent compilation check only returns error when a compilation of a RunType already exists");
+            assert!(
+                e,
+                "Concurrent compilation check only returns error when a compilation of a RunType already exists"
+            );
             return Err(RunCodeError::ConcurrentCompilation(self.run_type));
         }
         bcast_code_run_started(RunType::Execute, &self.bcast_tx);
@@ -204,7 +207,7 @@ pub(crate) async fn run_code(
         channel: container_msg.channel(),
         cargo_command: container_msg.cargo_command(),
     };
-    session.set_run_config(run_config.clone());
+    session.set_run_config(run_config);
     let run_config_msg =
         ServerMessage::RunConfigAction(RunConfigAction::RecentExecution(RunConfigExec {
             run_config,

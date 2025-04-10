@@ -444,10 +444,7 @@ function Editor({
             Live
           </CodeSelector>
         </Tooltip>
-        <Tooltip
-          title="Show code that was most recently executed (read only)"
-          arrow
-        >
+        <Tooltip title="Show most recently executed code (read only)" arrow>
           <CodeSelector
             selected={codeTypeSelector === SelectedCodeType.LastExecution}
             onClick={() => {

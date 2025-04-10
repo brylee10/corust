@@ -33,7 +33,7 @@ Where:
 - `--pids-limit 128`: Limits the number of process IDs (PIDs) that can be used by the container to 128. This limits the number of processes that can be run simultaneously within the container.
 - `--oom-score-adj 1000`: Adjusts the OOM (Out-Of-Memory) killer score for the container. A score of 1000 sets the container to the highest priority for being killed when the system is out of memory.
 
-The text output of a process is also limited to `STDOUT_ERR_BYTE_LIMIT` and concurrently executing containers is limited to `MAX_CONCURRENT_CONTAINERS`. The Corust sandbox has 200 top crates, as taken from [lib.rs/std](https://lib.rs/std). Thank you to [Kornel](https://github.com/kornelski) for responding to a request to create [the Atom feed](https://lib.rs/std.atom) this project uses. This is populated one-off with `rust/populate_crates`.
+The text output of a process is also limited to `STDOUT_ERR_BYTE_LIMIT` and concurrently executing containers is limited to `MAX_CONCURRENT_CONTAINERS`. The Corust sandbox has 200+ top crates, as taken from [lib.rs/std](https://lib.rs/std). Thank you to [Kornel](https://github.com/kornelski) for responding to a request to create [the Atom feed](https://lib.rs/std.atom) this project uses. This is populated one-off with `rust/populate_crates`.
 
 In unit tests, the Docker execution environment is replaced with a Rust project initialized in the temporary file system. 
 

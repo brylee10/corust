@@ -14,8 +14,8 @@ for channel in $channels_to_build; do
     full_name="${repository}/${image_name}"
 
     docker build \
+            --no-cache \
             --platform "${platform}" \
-            -t "${image_name}" \
             -t "${full_name}" \
             --build-arg CHANNEL="${channel}" \
             ../rust

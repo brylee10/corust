@@ -110,7 +110,7 @@ function HeaderBar({
           }}
         >
           <UserIconList userArr={userArr} currUser={currUser} />
-          <Tooltip title="Copy Corust Link" arrow>
+          <Tooltip title="Copy link to this Corust session" arrow>
             <CustomButton onClick={copyCorustLink} startIcon={<PeopleIcon />}>
               Share
             </CustomButton>

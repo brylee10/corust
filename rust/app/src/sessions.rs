@@ -8,15 +8,15 @@ use parking_lot::RwLock as BlockingRwLock;
 use std::{collections::HashSet, path::PathBuf, sync::Arc};
 
 use corust_components::{
+    RunConfig, ServerMessage,
     network::UserId,
     server::{DocumentState, Server},
-    RunConfig, ServerMessage,
 };
-use corust_types::{execution::CargoCommandType, CodeOutputState};
-use dashmap::{mapref::one::RefMut, DashMap};
+use corust_types::{CodeOutputState, execution::CargoCommandType};
+use dashmap::{DashMap, mapref::one::RefMut};
 use tokio::sync::{
-    broadcast::{channel, Sender},
     RwLock,
+    broadcast::{Sender, channel},
 };
 
 use crate::{
@@ -197,7 +197,7 @@ impl Session {
 
     pub fn run_config(&self) -> RunConfig {
         // The blocking lock call is short lived
-        self.run_config.read().clone()
+        *self.run_config.read()
     }
 
     pub fn set_run_config(&self, run_config: RunConfig) {
@@ -232,7 +232,9 @@ pub(crate) async fn mark_remove_inactive_users(
             // Not an error because the user may have gracefully left the session
         }
         if user_last_activity.elapsed().as_secs() > REMOVE_INACTIVE_USERS_SEC {
-            log::debug!("User {user:?} in session ID {session_id} has been inactive for {REMOVE_INACTIVE_USERS_SEC} sec, removing");
+            log::debug!(
+                "User {user:?} in session ID {session_id} has been inactive for {REMOVE_INACTIVE_USERS_SEC} sec, removing"
+            );
             users_to_remove.insert(*id);
         }
     }

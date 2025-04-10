@@ -7,26 +7,26 @@ use corust_components::{BroadcastLocalDocUpdate, RunConfig, RunConfigAction, Run
 use corust_sandbox::container::ContainerError;
 use corust_types::execution::CargoCommandType;
 use corust_types::{CodeOutputState, ContainerMessage, ExecuteCommand};
-use futures_util::stream::{SplitSink, SplitStream, StreamExt};
 use futures_util::SinkExt;
+use futures_util::stream::{SplitSink, SplitStream, StreamExt};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
-use tokio::sync::{broadcast, mpsc, RwLock};
+use tokio::sync::{RwLock, broadcast, mpsc};
 
 use crate::execute::runner::{
-    bcast_notify_output_size_error, container_response_to_runner_output, run_code,
-    ws_notify_concurrent_code_error, RunCodeError, RunType, SharedContainerFactory,
+    RunCodeError, RunType, SharedContainerFactory, bcast_notify_output_size_error,
+    container_response_to_runner_output, run_code, ws_notify_concurrent_code_error,
 };
 use crate::sessions::{
-    mark_remove_inactive_users, MarkRemoveUsers, SessionId, SharedServer, SharedSession,
-    SharedSessionMap,
+    MarkRemoveUsers, SessionId, SharedServer, SharedSession, SharedSessionMap,
+    mark_remove_inactive_users,
 };
-use corust_components::{network::RemoteUpdate, ServerMessage, Snapshot};
+use corust_components::{ServerMessage, Snapshot, network::RemoteUpdate};
 use tokio::sync::broadcast::error::{RecvError, SendError};
 use tokio::time::Duration;
 use warp::{
-    filters::ws::{Message, WebSocket},
     Filter,
+    filters::ws::{Message, WebSocket},
 };
 
 // Frequency to send pings to each client, in seconds
@@ -105,7 +105,7 @@ pub(crate) async fn handle_websocket(
     send_snapshot(
         Arc::clone(&server),
         session.code_output_state(&CargoCommandType::Execute),
-        session.run_config().clone(),
+        session.run_config(),
         &mut ws_tx,
     )
     .await;
@@ -142,7 +142,7 @@ pub(crate) async fn handle_websocket(
     ));
 }
 
-async fn broadcast_user_list<'a>(
+async fn broadcast_user_list(
     bcast_tx: tokio::sync::broadcast::Sender<ServerMessage>,
     server: SharedServer,
 ) -> Result<(), WebSocketError> {
@@ -343,7 +343,7 @@ async fn handle_text_message(
         }
         WsClientTextMsg::ConfigUpdate(run_config_update) => {
             log::debug!("Received Run Config Update from client: {run_config_update:?}");
-            session.set_run_config(run_config_update.run_config.clone());
+            session.set_run_config(run_config_update.run_config);
             let msg = ServerMessage::RunConfigAction(RunConfigAction::ConfigUpdate(
                 run_config_update.clone(),
             ));
@@ -363,7 +363,9 @@ async fn handle_pong_message(server: SharedServer, user_id: UserId, session_id: 
             user.activity.active = true;
             user.activity.last_activity = activity_time;
         }
-        None => panic!("Received pong for user ID {user_id} which does not exist in session ID {session_id} user map"),
+        None => panic!(
+            "Received pong for user ID {user_id} which does not exist in session ID {session_id} user map"
+        ),
     }
 }
 
@@ -373,10 +375,14 @@ async fn handle_close_message(
     user_id: UserId,
     session_id: SessionId,
 ) -> Result<(), WebSocketError> {
-    log::info!("Received graceful close message from client {user_id} in session ID {session_id}, removing user");
+    log::info!(
+        "Received graceful close message from client {user_id} in session ID {session_id}, removing user"
+    );
     match server.write().await.mark_user_inactive(user_id) {
         Ok(_) => {}
-        Err(ServerError::UserIdNotFound(user_id)) => panic!("Received close user ID {user_id} which does not exist in session ID {session_id} user map"),
+        Err(ServerError::UserIdNotFound(user_id)) => panic!(
+            "Received close user ID {user_id} which does not exist in session ID {session_id} user map"
+        ),
         Err(e) => panic!("Error marking user inactive on close: {e:?}"),
     }
     broadcast_user_list(bcast_tx, server).await?;
@@ -549,10 +555,14 @@ async fn ws_mark_remove_inactive_users(
         // tx close would initiate close handshake with client, but
         match ws_tx.write().await.close().await {
             Ok(_) => {
-                log::debug!("Closed websocket for inactive current user {user_id} from session ID {session_id}");
+                log::debug!(
+                    "Closed websocket for inactive current user {user_id} from session ID {session_id}"
+                );
             }
             Err(e) => {
-                log::error!("Failed to close websocket for current user {user_id} from session ID {session_id}: {e}");
+                log::error!(
+                    "Failed to close websocket for current user {user_id} from session ID {session_id}: {e}"
+                );
             }
         }
         // Exit since the current user is inactive

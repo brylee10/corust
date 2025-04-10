@@ -1,7 +1,7 @@
 # Based on Rust Playground Dockerfile
 # https://github.com/rust-lang/rust-playground/blob/main/compiler/base/Dockerfile
 
-FROM ubuntu:24.04 as toolchain
+FROM ubuntu:24.04 AS toolchain
 
 # Default to building the stable Rust channel
 ARG CHANNEL=stable
@@ -67,4 +67,4 @@ RUN cargo build --release
 RUN cargo build
 RUN rm src/*.rs
 
-ENTRYPOINT ["bash"]
+ENTRYPOINT ["/corust/tools/entrypoint.sh"]
