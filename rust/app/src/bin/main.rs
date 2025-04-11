@@ -3,19 +3,22 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use ansi_term::Color;
-use corust_app::db::{DocumentTable, Table, UserTable};
+use corust_app::db::{CompilationTable, DocumentTable, Table, UserTable};
 use env_logger::Builder;
 use log::Level;
 
 use std::io::Write;
 use warp::Filter;
 
-use corust_app::sessions::{spawn_background_session_managers, SessionMap, SharedSessionMap};
+use corust_app::sessions::{SessionMap, SharedSessionMap, spawn_background_session_managers};
 use corust_app::users::user_join_route;
 use corust_app::{root_page, websocket::*};
 use corust_sandbox::container::ContainerFactory;
 
-const MAX_CONCURRENT_CONTAINERS: usize = 100;
+/// The maximum number of concurrent containers that can be running at once. Used to avoid overloading the CPU
+/// with many concurrent CPU intensive tasks which significantly outnumber the number of cores.
+/// The playground defaults to 10: https://github.com/rust-lang/rust-playground/blob/main/ui/src/main.rs#L23
+const MAX_CONCURRENT_CONTAINERS: usize = 8;
 
 #[tokio::main]
 async fn main() {
@@ -54,9 +57,11 @@ async fn main() {
         .into();
     let document_table = DocumentTable::new(db_path.clone());
     let user_table = UserTable::new(db_path.clone());
+    let compilation_table = CompilationTable::new(db_path.clone());
     // unwrap: server start up should fail if the tables cannot be created
     document_table.create().unwrap();
     user_table.create().unwrap();
+    compilation_table.create().unwrap();
 
     // Start a background tasks to archive empty sessions and remove inactive users
     spawn_background_session_managers(Arc::clone(&session_map), db_path.clone());

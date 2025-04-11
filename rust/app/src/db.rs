@@ -299,6 +299,99 @@ impl Table for UserTable {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+pub struct Compilation {
+    /// The user id of the user who compiled the code
+    pub user_id: UserId,
+}
+
+#[derive(Debug, Clone)]
+pub struct CompilationTableKey {
+    pub session_id: SessionId,
+    pub user_id: UserId,
+}
+
+/// Tracks the compilations per user
+pub struct CompilationTable {
+    base_table: BaseTable,
+}
+
+impl CompilationTable {
+    pub fn new(db_path: PathBuf) -> Self {
+        CompilationTable {
+            base_table: BaseTable::new(db_path),
+        }
+    }
+
+    pub fn create_connection(&self) -> Result<Connection, DbError> {
+        self.base_table.create_connection()
+    }
+}
+
+impl Table for CompilationTable {
+    type Item = Compilation;
+    type Error = DbError;
+    type Key = CompilationTableKey;
+
+    fn create(&self) -> Result<(), DbError> {
+        let conn = self.create_connection()?;
+        // Ignore return value of number of rows updated
+        let _ = conn.execute(
+            "CREATE TABLE IF NOT EXISTS compilations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    session_id TEXT,
+                    user_id INTEGER,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (session_id) REFERENCES documents (session_id)
+                );
+                ",
+            (),
+        )?;
+        Ok(())
+    }
+
+    fn insert_or_update(
+        &self,
+        key: CompilationTableKey,
+        compilation: Compilation,
+    ) -> Result<(), DbError> {
+        debug_assert!(key.user_id == compilation.user_id);
+
+        let conn = self.create_connection()?;
+
+        conn.execute(
+            "INSERT INTO compilations (session_id, user_id) VALUES (:session_id, :user_id)",
+            &[
+                (":session_id", &key.session_id as &dyn ToSql),
+                (":user_id", &key.user_id as &dyn ToSql),
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Get all the compilations in a session (currently not used, so it is a no-op)
+    fn get_all(&self, session_id: &str) -> Result<Vec<Compilation>, DbError> {
+        let conn = self.create_connection()?;
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, user_id, created_at FROM compilations WHERE session_id = :session_id",
+            )
+            .map_err(|e| with_backtrace!(e))?;
+
+        let compilations = stmt
+            .query_map(&[(":session_id", session_id)], |row| {
+                let user_id = row.get(1)?;
+
+                Ok(Compilation { user_id })
+            })
+            .map_err(|e| with_backtrace!(e))?;
+
+        compilations
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|e| with_backtrace!(e))
+    }
+}
+
 /// Represents a queryable table in a database.
 pub trait Table {
     type Item;
@@ -319,7 +412,28 @@ pub trait Table {
 #[cfg(test)]
 mod test {
     use super::*;
-    use tempfile::tempdir;
+    use tempfile::{TempDir, tempdir};
+
+    // Utility to create a document table and insert a document state
+    // Required for the user and compilation tables to have a foreign key reference
+    fn create_document_table(tmp_dir: &TempDir, session_id: &str) {
+        let db_path = tmp_dir.path().join("test.db");
+        let document_table = DocumentTable::new(db_path);
+        document_table.create().unwrap();
+
+        let document_state = DocumentState::new(
+            10,
+            "document".to_string(),
+            Default::default(),
+            Default::default(),
+        );
+        let document_table_key = DocumentTableKey {
+            session_id: session_id.to_string(),
+        };
+        document_table
+            .insert_or_update(document_table_key, document_state.clone())
+            .unwrap();
+    }
 
     mod document_table {
         use super::*;
@@ -393,30 +507,7 @@ mod test {
     }
 
     mod user_table {
-        use tempfile::TempDir;
-
         use super::*;
-
-        // Utility to create a document table and insert a document state
-        // Required for the user table to have a foreign key reference
-        fn create_document_table(tmp_dir: &TempDir, session_id: &str) {
-            let db_path = tmp_dir.path().join("test.db");
-            let document_table = DocumentTable::new(db_path);
-            document_table.create().unwrap();
-
-            let document_state = DocumentState::new(
-                10,
-                "document".to_string(),
-                Default::default(),
-                Default::default(),
-            );
-            let document_table_key = DocumentTableKey {
-                session_id: session_id.to_string(),
-            };
-            document_table
-                .insert_or_update(document_table_key, document_state.clone())
-                .unwrap();
-        }
 
         #[test]
         fn test_user_table_insert_get() {
@@ -482,6 +573,34 @@ mod test {
                 // A single user should be updated
                 assert!(retrieved_users.len() == 1);
             }
+        }
+    }
+
+    mod compilation_table {
+        use super::*;
+
+        #[test]
+        fn test_compilation_table_insert_get() {
+            // Tests create, insert, get_all for CompilationTable
+            let tmp_dir = tempdir().unwrap();
+            let session_id = "abc";
+            create_document_table(&tmp_dir, session_id);
+
+            let db_path = tmp_dir.path().join("test.db");
+            let compilation_table = CompilationTable::new(db_path);
+            compilation_table.create().unwrap();
+
+            let compilation = Compilation { user_id: 100 };
+            let compilation_key = CompilationTableKey {
+                session_id: session_id.to_string(),
+                user_id: 100,
+            };
+            compilation_table
+                .insert_or_update(compilation_key.clone(), compilation.clone())
+                .unwrap();
+
+            let retrieved_compilations = compilation_table.get_all(session_id).unwrap();
+            assert_eq!(retrieved_compilations, vec![compilation]);
         }
     }
 }

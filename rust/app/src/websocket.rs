@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::{RwLock, broadcast, mpsc};
 
+use crate::db::{Compilation, CompilationTable, CompilationTableKey, Table};
 use crate::execute::runner::{
     RunCodeError, RunType, SharedContainerFactory, bcast_notify_output_size_error,
     container_response_to_runner_output, run_code, ws_notify_concurrent_code_error,
@@ -185,6 +186,7 @@ async fn handle_messages(
                     Arc::clone(&session),
                     Arc::clone(&container_factory),
                     &username,
+                    db_path.clone(),
                 ).await?;
                 // Terminate handler for this client connection. User has (un)gracefully
                 // closed the websocket.
@@ -227,6 +229,7 @@ async fn handle_ws_message(
     session: SharedSession,
     container_factory: SharedContainerFactory,
     username: &str,
+    db_path: PathBuf,
 ) -> Result<IsConnectionOpen, WebSocketError> {
     // handle client ws messages, broadcast to others
     match next {
@@ -240,6 +243,8 @@ async fn handle_ws_message(
                         session,
                         container_factory,
                         username,
+                        user_id,
+                        db_path,
                     )
                     .await?;
                 } else if msg.is_pong() {
@@ -266,6 +271,7 @@ async fn handle_ws_message(
     Ok(true)
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_text_message(
     msg: Message,
     bcast_tx: tokio::sync::broadcast::Sender<ServerMessage>,
@@ -273,6 +279,8 @@ async fn handle_text_message(
     session: SharedSession,
     container_factory: SharedContainerFactory,
     username: &str,
+    user_id: UserId,
+    db_path: PathBuf,
 ) -> Result<(), WebSocketError> {
     // Convert network serialized method into native struct
     // to_str() is always valid because msg `is_text`
@@ -323,7 +331,8 @@ async fn handle_text_message(
             log::debug!("Received Execute Command from client: {execute_command:?}");
             // Spawn new task for execution to allow processing other ws messages
             let session = Arc::clone(&session);
-            let container_factory = Arc::clone(&container_factory);
+            let container_factory: Arc<corust_sandbox::container::ContainerFactory> =
+                Arc::clone(&container_factory);
             let bcast_tx: broadcast::Sender<ServerMessage> = bcast_tx.clone();
             let shared_ws_tx = Arc::clone(&shared_ws_tx);
             tokio::spawn({
@@ -336,6 +345,8 @@ async fn handle_text_message(
                         container_factory,
                         shared_ws_tx,
                         username,
+                        user_id,
+                        db_path.as_path(),
                     )
                     .await;
                 }
@@ -448,6 +459,7 @@ async fn send_ping(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn handle_execution(
     execute_command: ExecuteCommand,
     session: SharedSession,
@@ -455,7 +467,21 @@ async fn handle_execution(
     container_factory: SharedContainerFactory,
     shared_ws_tx: SharedWsSender,
     username: String,
+    user_id: UserId,
+    db_path: &Path,
 ) {
+    // On compilation, add an entry to the compilation table
+    let session_id = session.session_id();
+    let compilation_table = CompilationTable::new(db_path.to_path_buf());
+    let compilation_key = CompilationTableKey {
+        session_id,
+        user_id,
+    };
+    let compilation = Compilation { user_id };
+    if let Err(e) = compilation_table.insert_or_update(compilation_key.clone(), compilation) {
+        // This error is not fatal, but the user will not be saved to the database
+        log::error!("Error inserting compilation {compilation_key:?} into database: {e}");
+    }
     let container_msg = ContainerMessage::Execute(execute_command);
     let (container_response_tx, mut container_response_rx) =
         mpsc::channel(CONTAINER_RESPONSE_MSG_LIMIT);
@@ -509,7 +535,10 @@ async fn handle_execution(
     match handle.await.unwrap() {
         Ok(_) => {}
         Err(e) => {
-            log::error!("Error running code: {e:?}");
+            log::error!(
+                "Error running code: {e:?} in session {}",
+                session.session_id().clone()
+            );
             match e {
                 RunCodeError::ConcurrentCompilation(run_type) => {
                     // Broadcast error back to client
@@ -519,6 +548,9 @@ async fn handle_execution(
                 | RunCodeError::ContainerError(ContainerError::StdoutTooLarge { .. }) => {
                     // TODO: Use the correct execute type or make runtype optional in the ws message
                     bcast_notify_output_size_error(bcast_tx.clone(), RunType::Execute).await;
+                }
+                RunCodeError::RunnerNonZeroExit(exit_status) => {
+                    log::error!("Runner non-zero exit: {exit_status}");
                 }
                 _ => {}
             }
