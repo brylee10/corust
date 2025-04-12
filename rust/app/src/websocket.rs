@@ -4,7 +4,7 @@ use std::sync::Arc;
 use corust_components::network::{UserId, UserList};
 use corust_components::server::ServerError;
 use corust_components::{BroadcastLocalDocUpdate, RunConfig, RunConfigAction, RunConfigUpdate};
-use corust_sandbox::container::ContainerError;
+use corust_sandbox::container::{ContainerError, DockerBackend};
 use corust_types::execution::CargoCommandType;
 use corust_types::{CodeOutputState, ContainerMessage, ExecuteCommand};
 use futures_util::SinkExt;
@@ -331,7 +331,7 @@ async fn handle_text_message(
             log::debug!("Received Execute Command from client: {execute_command:?}");
             // Spawn new task for execution to allow processing other ws messages
             let session = Arc::clone(&session);
-            let container_factory: Arc<corust_sandbox::container::ContainerFactory> =
+            let container_factory: Arc<corust_sandbox::container::ContainerFactory<DockerBackend>> =
                 Arc::clone(&container_factory);
             let bcast_tx: broadcast::Sender<ServerMessage> = bcast_tx.clone();
             let shared_ws_tx = Arc::clone(&shared_ws_tx);
@@ -482,7 +482,7 @@ async fn handle_execution(
         // This error is not fatal, but the user will not be saved to the database
         log::error!("Error inserting compilation {compilation_key:?} into database: {e}");
     }
-    let container_msg = ContainerMessage::Execute(execute_command);
+    let container_msg = ContainerMessage::Execute(execute_command.clone());
     let (container_response_tx, mut container_response_rx) =
         mpsc::channel(CONTAINER_RESPONSE_MSG_LIMIT);
 
@@ -497,7 +497,7 @@ async fn handle_execution(
         let session = Arc::clone(&session);
         async move {
             run_code(
-                container_msg,
+                execute_command,
                 session,
                 Arc::clone(&container_factory),
                 container_response_tx,

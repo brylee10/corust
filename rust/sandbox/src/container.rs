@@ -2,26 +2,27 @@
 //! Inspiration taken from Rust Playground `coordinator.rs`.
 
 use std::{
-    process::Stdio,
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-    },
+    marker::PhantomData,
+    process::{ExitCode, ExitStatus, Stdio},
+    sync::Arc,
 };
 
 use chrono::Utc;
 use corust_types::{
     CargoCommand, Channel, ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse,
     OptLevel,
+    container::{ChannelVersions, Version, Versions},
+    standalone::StandaloneCommand,
 };
 use enumset::{EnumSet, EnumSetType};
 use futures::{SinkExt, StreamExt};
-use snafu::{OptionExt, ResultExt, Snafu};
+use snafu::{ResultExt, Snafu};
 use tokio::{
     io::{AsyncBufReadExt, BufReader},
+    join,
     process::{Child, ChildStderr, ChildStdin, ChildStdout, Command},
     sync::{OwnedSemaphorePermit, Semaphore, mpsc},
-    task::JoinSet,
+    task::{JoinError, JoinSet},
 };
 use tokio_util::codec::{FramedRead, FramedWrite};
 
@@ -46,8 +47,6 @@ pub enum ContainerError {
     StderrCapture,
     #[snafu(display("Bincode (de)serialization error: {}", source))]
     Bincode { source: bincode::Error },
-    #[snafu(display("Container is already executing"))]
-    ContainerAlreadyExecuting,
     #[snafu(display("Acquire sempahore error: {}", source))]
     AcquireSemaphore { source: tokio::sync::AcquireError },
     #[snafu(display("Read from stdout error: {}", source))]
@@ -60,9 +59,13 @@ pub enum ContainerError {
         received
     ))]
     IncorrectMessageLength { expected: usize, received: usize },
+    #[snafu(display("Receive response error: {}", source))]
+    ReceiveResponse {
+        source: mpsc::error::SendError<ContainerResponse>,
+    },
     #[snafu(display("Send message error: {}", source))]
     SendMessage {
-        source: mpsc::error::SendError<ContainerResponse>,
+        source: mpsc::error::SendError<ContainerMessage>,
     },
     #[snafu(display(
         "Stdout too large. Max bytes {}, received {}",
@@ -81,6 +84,44 @@ pub enum ContainerError {
     StderrTooLarge {
         max_bytes: usize,
         received_bytes: usize,
+    },
+    #[snafu(display("Commander error: {}", source))]
+    ContainerCommander { source: CommanderError },
+    #[snafu(display("Join tasks error: {}", source))]
+    JoinTasks { source: JoinError },
+}
+
+#[derive(Debug, Snafu)]
+pub enum VersionsError {
+    #[snafu(display("Rustc version missing"))]
+    RustcVersionMissing,
+    #[snafu(display("Unexpected multiple responses. Expected 1, got {}", count))]
+    UnexpectedMultipleResponses { count: usize },
+    #[snafu(display("Unexpected response: {:?}", response))]
+    UnexpectedResponse { response: String },
+    #[snafu(display("Commander error: {}", source))]
+    Commander { source: CommanderError },
+    #[snafu(display("Failed to get versions for beta channel"))]
+    BetaVersions,
+    #[snafu(display("Failed to get versions for nightly channel"))]
+    NightlyVersions,
+    #[snafu(display("Failed to get versions for stable channel"))]
+    StableVersions,
+    #[snafu(display("Error creating a container"))]
+    CreateContainer { source: ContainerError },
+    #[snafu(display("Exit status is not success: {:?}", exit_status))]
+    ExitStatusNotSuccess { exit_status: ExitStatus },
+}
+
+#[derive(Debug, Snafu)]
+pub enum CommanderError {
+    #[snafu(display("Send message error: {}", source))]
+    CommanderSendMessage {
+        source: mpsc::error::SendError<ContainerMessage>,
+    },
+    #[snafu(display("Send response error: {}", source))]
+    CommanderSendResponse {
+        source: mpsc::error::SendError<ContainerResponse>,
     },
 }
 
@@ -104,9 +145,9 @@ pub trait Backend {
             .context(SpawnChildSnafu {})?;
 
         // https://docs.rs/tokio/latest/tokio/process/struct.Child.html#fields
-        let stdin = child.stdin.take().context(StdinCaptureSnafu)?;
-        let stdout = child.stdout.take().context(StdoutCaptureSnafu)?;
-        let stderr = child.stderr.take().context(StderrCaptureSnafu)?;
+        let stdin = child.stdin.take().ok_or(ContainerError::StdinCapture)?;
+        let stdout = child.stdout.take().ok_or(ContainerError::StdoutCapture)?;
+        let stderr = child.stderr.take().ok_or(ContainerError::StderrCapture)?;
 
         let run_container_result = RunContainerResult {
             child,
@@ -195,32 +236,52 @@ pub struct RunContainerResult {
 
 /// A factory for creating containers with a specific backend.
 /// The factory controls the number of concurrent containers that can be run.
-pub struct ContainerFactory {
+pub struct ContainerFactory<B> {
     // Controls number of concurrent containers
     semaphore: Arc<Semaphore>,
+    backend: B,
 }
 
-impl ContainerFactory {
-    pub fn new(max_concurrent_containers: usize) -> Self {
+impl<B: Backend> ContainerFactory<B> {
+    pub fn new(max_concurrent_containers: usize, backend: B) -> Self {
         ContainerFactory {
             semaphore: Arc::new(Semaphore::new(max_concurrent_containers)),
+            backend,
         }
     }
 
     /// Creates a container, waiting for a permit.
     /// A container factory can generate containers with any backend.
-    pub async fn create_container<B: Backend>(&self, backend: B) -> Result<Container<B>> {
+    pub async fn create_container(&self, channel: Channel) -> Result<Container<B>> {
         let run_container_permit = Arc::clone(&self.semaphore)
             .acquire_owned()
             .await
             .context(AcquireSemaphoreSnafu)?;
-        Ok(Container::new(run_container_permit, backend))
+        Ok(Container::new(run_container_permit, &self.backend, channel).await?)
     }
 
-    /// Convenience method to a container with a [`DockerBackend`]
-    pub async fn create_container_docker_backend(&self) -> Result<Container<DockerBackend>> {
-        let docker_backend = DockerBackend::new();
-        self.create_container(docker_backend).await
+    /// Find the Rust versions of a given backend
+    pub async fn versions(&self) -> Result<Versions, VersionsError> {
+        let [stable, beta, nightly] =
+            [Channel::Stable, Channel::Beta, Channel::Nightly].map(|c| async move {
+                let mut container = self
+                    .create_container(c)
+                    .await
+                    .context(CreateContainerSnafu)?;
+                container.versions().await
+            });
+
+        let (stable, beta, nightly) = join!(stable, beta, nightly);
+
+        let stable = stable.map_err(|_| VersionsError::StableVersions)?;
+        let beta = beta.map_err(|_| VersionsError::BetaVersions)?;
+        let nightly = nightly.map_err(|_| VersionsError::NightlyVersions)?;
+
+        Ok(Versions {
+            stable,
+            beta,
+            nightly,
+        })
     }
 }
 
@@ -234,36 +295,35 @@ enum ContainerState {
 pub struct Container<B> {
     // The container can be in multiple states at once
     _states: EnumSet<ContainerState>,
-    is_executing: AtomicBool,
     _run_permit: OwnedSemaphorePermit,
-    backend: B,
+    commander: Commander,
+    _phantom: PhantomData<B>,
 }
 
 impl<B: Backend> Container<B> {
-    fn new(run_permit: OwnedSemaphorePermit, backend: B) -> Self {
-        Container {
+    pub async fn new(
+        run_permit: OwnedSemaphorePermit,
+        backend: &B,
+        channel: Channel,
+    ) -> Result<Self> {
+        let commander = Container::run(backend, channel).await?;
+        Ok(Container {
             _states: EnumSet::new(),
-            is_executing: AtomicBool::new(false),
             _run_permit: run_permit,
-            backend,
-        }
+            commander,
+            _phantom: PhantomData,
+        })
+    }
+
+    pub fn commander(&self) -> &Commander {
+        &self.commander
     }
 
     /// Run the container, returning the child process and IO handles.
     /// The channel specifies the environment to run the code in.
-    pub async fn run(&self, channel: Channel) -> Result<ContainerRunRet> {
-        // A container corresponds to one coding session, so it can only execute one
-        // code file at a time. Check and set "is running" in one operation.
-        if let Err(prev_val) =
-            self.is_executing
-                .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        {
-            debug_assert!(prev_val, "Container should not already be executing");
-            return Err(ContainerError::ContainerAlreadyExecuting);
-        }
-
+    pub async fn run(backend: &B, channel: Channel) -> Result<Commander> {
         // Run a docker container, returning the container stdin, stdout, and stderr
-        let run_container = self.backend.start_runner_in_background(channel)?;
+        let run_container = backend.start_runner_in_background(channel)?;
         let RunContainerResult {
             stdin,
             stdout,
@@ -272,15 +332,166 @@ impl<B: Backend> Container<B> {
         } = run_container;
 
         let child_io = create_child_io(stdin, stdout, stderr)?;
+        Ok(Commander { child, child_io })
+    }
 
-        self.is_executing.store(false, Ordering::SeqCst);
-        Ok(ContainerRunRet { child, child_io })
+    /// Retrieve the channel versions (stable, beta, nightly) of the sandbox
+    pub(crate) async fn versions(&mut self) -> Result<ChannelVersions, VersionsError> {
+        let rustc_version = self.rustc_version().await?;
+        let rustc_version = rustc_version.ok_or(VersionsError::RustcVersionMissing)?;
+        Ok(ChannelVersions {
+            rustc: rustc_version,
+        })
+    }
+
+    /// Get the `rustc` version of a particular container
+    async fn rustc_version(&mut self) -> Result<Option<Version>, VersionsError> {
+        let command = StandaloneCommand::simple("rustc", ["--version", "--verbose"]);
+        let command = ContainerMessage::Standalone(command);
+        self.commander
+            .send_message(command)
+            .await
+            .map_err(|e| VersionsError::Commander { source: e })?;
+
+        let (responses, exit_status) = self
+            .commander
+            .read_all_responses()
+            .await
+            .context(CommanderSnafu)?;
+
+        if !exit_status.success() {
+            return Err(VersionsError::ExitStatusNotSuccess { exit_status });
+        }
+
+        if responses.len() != 1 {
+            return Err(VersionsError::UnexpectedMultipleResponses {
+                count: responses.len(),
+            });
+        }
+        let response = responses.first().unwrap();
+
+        match response {
+            ContainerResponse::Standalone(response) => {
+                let stdout = String::from_utf8_lossy(&response.stdout);
+                let version = Version::parse_rustc_version_verbose(&stdout);
+                Ok(Some(version))
+            }
+            _ => Err(VersionsError::UnexpectedResponse {
+                response: response.to_string(),
+            }),
+        }
+    }
+
+    /// Send a request to the container and return the [`Commander`] which gives access to
+    /// the child process and IO handles.
+    pub async fn execute_request(
+        &mut self,
+        execute_command: ExecuteCommand,
+    ) -> Result<&mut Commander, ContainerError> {
+        let message = ContainerMessage::Execute(execute_command);
+        self.commander
+            .send_message(message)
+            .await
+            .context(ContainerCommanderSnafu)?;
+        Ok(&mut self.commander)
     }
 }
 
-pub struct ContainerRunRet {
+/// Worker process and communication handles with a container.
+/// Wrapper around the child process and the IO handles.
+// Analogous to the `Commander` type in Rust Playground
+pub struct Commander {
     pub child: Child,
     pub child_io: ChildIo,
+}
+
+impl Commander {
+    /// Send a message to the container and drain the responses
+    pub async fn send_message(&mut self, message: ContainerMessage) -> Result<(), CommanderError> {
+        self.child_io
+            .child_stdin_tx
+            .as_ref()
+            .unwrap()
+            .send(message)
+            .await
+            .context(CommanderSendMessageSnafu)?;
+        Ok(())
+    }
+
+    /// Stream responses from the container to the caller until the child process exits
+    pub async fn stream_responses(
+        &mut self,
+        container_response_tx: mpsc::Sender<ContainerResponse>,
+    ) -> Result<ExitStatus, CommanderError> {
+        // Read from child stdout until it closes. Do not wait the child before this otherwise
+        // the task will wait until execution is complete so the intermediate stdout will not be streamed
+        while let Some(container_response) = self.child_io.child_stdout_rx.recv().await {
+            log::debug!("App runner received ContainerResponse");
+            log::trace!("Container response: {:?}", container_response);
+            container_response_tx
+                .send(container_response)
+                .await
+                .context(CommanderSendResponseSnafu)?;
+        }
+
+        let exit_status = self.wait().await?;
+        Ok(exit_status)
+    }
+
+    /// Wait for the child process to exit
+    pub async fn wait(&mut self) -> Result<ExitStatus, CommanderError> {
+        let exit_status = self.child.wait().await.unwrap();
+        log::debug!("Runner exited with status {:?}", exit_status);
+        Ok(exit_status)
+    }
+
+    /// Join tasks listening to child stdout and stderr
+    pub async fn join_tasks(&mut self) -> Result<(), ContainerError> {
+        // Join tasks listening to child stdout and stderr
+        while let Some(e) = self.child_io.tasks.join_next().await {
+            // Tasks only join after the `child.wait()`, which indicates the child
+            // has finished running. Drop stdin to allow `child_stdin_rx` to terminate and for all child io tasks to
+            // join, otherwise only stderr/stdout will finish.
+            std::mem::swap(&mut self.child_io.child_stdin_tx, &mut None);
+            match e.context(JoinTasksSnafu)? {
+                Ok(()) => {}
+                Err(e) => {
+                    log::error!("Received container error: {:?}", e);
+                    return Err(e)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    /// Read all responses from the container until the channel is closed
+    pub async fn read_all_responses(
+        &mut self,
+    ) -> Result<(Vec<ContainerResponse>, ExitStatus), CommanderError> {
+        // Collect responses until the channel is closed
+        let mut responses = Vec::new();
+
+        loop {
+            match self.child_io.child_stdout_rx.recv().await {
+                Some(response) => {
+                    log::debug!("App runner received ContainerResponse");
+                    log::trace!("Container response: {:?}", response);
+                    responses.push(response);
+                }
+                None => break, // Channel is closed
+            }
+        }
+
+        while let Ok(response) = self.child_io.child_stdout_rx.try_recv() {
+            log::debug!("Draining remaining response");
+            responses.push(response);
+        }
+
+        let exit_code = self.child.wait().await.unwrap();
+        log::debug!("Runner exited with code {:?}", exit_code);
+
+        Ok((responses, exit_code))
+    }
 }
 
 // Communicates with a component (e.g. container) via serialized
@@ -329,11 +540,12 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
                         });
                     }
                 }
+                _ => { /* Only user provided executable code can overflow stderr/stdout */ }
             }
             child_stdout_tx
                 .send(response)
                 .await
-                .context(SendMessageSnafu)?;
+                .context(ReceiveResponseSnafu)?;
         }
         Ok(())
     });
@@ -480,12 +692,12 @@ mod test {
     #[tokio::test]
     async fn test_hello_world() {
         let backend = init_test_backend();
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
-        let container = container_factory.create_container(backend).await.unwrap();
-        let ContainerRunRet {
-            mut child,
-            mut child_io,
-        } = container.run(Channel::Stable).await.unwrap();
+        let container_factory: ContainerFactory<TestContainerBackend> =
+            ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+        let mut container = container_factory
+            .create_container(Channel::Stable)
+            .await
+            .unwrap();
 
         let execute_command = ExecuteCommand::new(
             "fn main() { println!(\"Hello world!\"); }".to_string(),
@@ -494,14 +706,7 @@ mod test {
             OptLevel::Release,
             Channel::Stable,
         );
-        let message = ContainerMessage::Execute(execute_command);
-        child_io
-            .child_stdin_tx
-            .as_ref()
-            .unwrap()
-            .send(message)
-            .await
-            .unwrap();
+        let _ = container.execute_request(execute_command).await.unwrap();
         // Sends second `ExecuteCommand` to test it is ignored because runner does not process any
         // stdin messages after first `ExecuteCommand`.
         let execute_command = ExecuteCommand::new(
@@ -514,21 +719,14 @@ mod test {
             OptLevel::Release,
             Channel::Stable,
         );
-        let message = ContainerMessage::Execute(execute_command);
-        child_io
-            .child_stdin_tx
-            .as_ref()
-            .unwrap()
-            .send(message)
-            .await
-            .unwrap();
+        let commander = container.execute_request(execute_command).await.unwrap();
 
-        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
         assert!(exit_code.success());
 
         // Get the last value
         let mut response = None;
-        while let Some(value) = child_io.child_stdout_rx.recv().await {
+        while let Some(value) = commander.child_io.child_stdout_rx.recv().await {
             response = Some(value);
         }
         let response = response.unwrap();
@@ -538,22 +736,24 @@ mod test {
                 let stdout = String::from_utf8_lossy(&response.stdout);
                 assert_contains!(stdout, "Hello world!\n");
             }
+            _ => {
+                panic!("Unexpected response type");
+            }
         }
     }
 
     #[tokio::test]
     async fn test_read_stderr() {
         let backend = init_test_backend();
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
-        let container = container_factory.create_container(backend).await.unwrap();
-        let ContainerRunRet {
-            mut child,
-            mut child_io,
-        } = container.run(Channel::Stable).await.unwrap();
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+        let mut container = container_factory
+            .create_container(Channel::Stable)
+            .await
+            .unwrap();
 
         let execute_command = ExecuteCommand::new(
-            "fn main() { 
-                panic!(\"An error occurred!\"); 
+            "fn main() {
+                panic!(\"An error occurred!\");
             }"
             .to_string(),
             TargetType::Binary,
@@ -561,31 +761,29 @@ mod test {
             OptLevel::Release,
             Channel::Stable,
         );
-        let message = ContainerMessage::Execute(execute_command);
-        child_io
-            .child_stdin_tx
-            .as_ref()
-            .unwrap()
-            .send(message)
-            .await
-            .unwrap();
+        let commander = container.execute_request(execute_command).await.unwrap();
 
-        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
         assert!(exit_code.success());
 
         // Get the last value
-        let mut response: Option<ContainerResponse> = None;
-        while let Some(value) = child_io.child_stdout_rx.recv().await {
-            response = Some(value);
-        }
-        let response = response.unwrap();
+        let (responses, exit_status) = commander.read_all_responses().await.unwrap();
+        // There should be at least one streamed response
+        assert!(responses.len() >= 1);
+        let response = responses.last().unwrap();
         assert!(matches!(response, ContainerResponse::Execute(_)));
         match response {
             ContainerResponse::Execute(response) => {
                 let stderr = String::from_utf8_lossy(&response.stderr);
                 assert_contains!(stderr, "An error occurred!\n");
             }
+            _ => {
+                panic!("Unexpected response type");
+            }
         }
+        // All tasks should end successfully
+        assert!(exit_status.success());
+        commander.join_tasks().await.unwrap();
     }
 
     #[tokio::test]
@@ -602,12 +800,11 @@ mod test {
     async fn test_library_crate() {
         // Tests a library target type can be compiled
         let backend = init_test_backend();
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
-        let container = container_factory.create_container(backend).await.unwrap();
-        let ContainerRunRet {
-            mut child,
-            mut child_io,
-        } = container.run(Channel::Stable).await.unwrap();
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+        let mut container = container_factory
+            .create_container(Channel::Stable)
+            .await
+            .unwrap();
 
         let execute_command = ExecuteCommand::new(
             "struct Test { x: i32 }".to_string(),
@@ -616,32 +813,29 @@ mod test {
             OptLevel::Release,
             Channel::Stable,
         );
+        let commander = container.execute_request(execute_command).await.unwrap();
 
-        let message = ContainerMessage::Execute(execute_command);
-        child_io
-            .child_stdin_tx
-            .as_ref()
-            .unwrap()
-            .send(message)
-            .await
-            .unwrap();
-
-        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
         assert!(exit_code.success());
 
         // Get the last value
-        let mut response: Option<ContainerResponse> = None;
-        while let Some(value) = child_io.child_stdout_rx.recv().await {
-            response = Some(value);
-        }
-        let response = response.unwrap();
+        let (responses, exit_status) = commander.read_all_responses().await.unwrap();
+        // There should be at least one streamed response
+        assert!(responses.len() >= 1);
+        let response = responses.last().unwrap();
         assert!(matches!(response, ContainerResponse::Execute(_)));
         match response {
             ContainerResponse::Execute(response) => {
                 let stderr = String::from_utf8_lossy(&response.stderr);
                 assert_contains!(stderr, "Finished `release` profile");
             }
+            _ => {
+                panic!("Unexpected response type");
+            }
         }
+        // All tasks should end successfully
+        assert!(exit_status.success());
+        commander.join_tasks().await.unwrap();
     }
 
     #[tokio::test]
@@ -649,7 +843,6 @@ mod test {
         // Tests code is compiled in debug mode when [`OptLevel::Debug`] is passed
         // and in release mode when [`OptLevel::Release`] is passed.
         // The code will panic in debug mode but not in release mode.
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
         struct ExpectedOutput {
             stderr: String,
             stdout: String,
@@ -675,11 +868,11 @@ mod test {
         {
             // One container (which maps 1-1 with a runner) must be created for each run
             let backend = init_test_backend();
-            let container = container_factory.create_container(backend).await.unwrap();
-            let ContainerRunRet {
-                mut child,
-                mut child_io,
-            } = container.run(Channel::Stable).await.unwrap();
+            let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+            let mut container = container_factory
+                .create_container(Channel::Stable)
+                .await
+                .unwrap();
 
             // Only panics in debug mode, prints "Hello world" in release mode
             let execute_command = ExecuteCommand::new(
@@ -689,27 +882,17 @@ mod test {
                 *opt_level,
                 Channel::Stable,
             );
-
-            let message = ContainerMessage::Execute(execute_command);
-            child_io
-                .child_stdin_tx
-                .as_ref()
-                .unwrap()
-                .send(message)
-                .await
-                .unwrap();
+            let commander = container.execute_request(execute_command).await.unwrap();
 
             // Child process succeeds, but the code it runs will panic
-            let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+            let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
             assert!(exit_code.success());
 
             // Get the last value, the output is built up incrementally
-            let mut response: Option<ContainerResponse> = None;
-            while let Some(value) = child_io.child_stdout_rx.recv().await {
-                response = Some(value);
-            }
-
-            let response = response.unwrap();
+            let (responses, exit_status) = commander.read_all_responses().await.unwrap();
+            // There should be at least one streamed response
+            assert!(responses.len() >= 1);
+            let response = responses.last().unwrap();
             assert!(matches!(response, ContainerResponse::Execute(_)));
             match response {
                 ContainerResponse::Execute(response) => {
@@ -722,7 +905,13 @@ mod test {
                     // https://users.rust-lang.org/t/solved-why-101-exit-code-when-use-panic/80061
                     assert_eq!(exit_code, expected_output.exit_code);
                 }
+                _ => {
+                    panic!("Unexpected response type");
+                }
             }
+            // All tasks should end successfully
+            assert!(exit_status.success());
+            commander.join_tasks().await.unwrap();
         }
     }
 
@@ -730,12 +919,11 @@ mod test {
     async fn test_cargo_test() {
         // Test code compiled with `cargo test` runs tests
         let backend = init_test_backend();
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
-        let container = container_factory.create_container(backend).await.unwrap();
-        let ContainerRunRet {
-            mut child,
-            mut child_io,
-        } = container.run(Channel::Stable).await.unwrap();
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+        let mut container = container_factory
+            .create_container(Channel::Stable)
+            .await
+            .unwrap();
 
         let execute_command = ExecuteCommand::new(
             r#"
@@ -753,25 +941,16 @@ mod test {
             OptLevel::Release,
             Channel::Stable,
         );
+        let commander = container.execute_request(execute_command).await.unwrap();
 
-        let message = ContainerMessage::Execute(execute_command);
-        child_io
-            .child_stdin_tx
-            .as_ref()
-            .unwrap()
-            .send(message)
-            .await
-            .unwrap();
-
-        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
         assert!(exit_code.success());
 
         // Get the last value
-        let mut response: Option<ContainerResponse> = None;
-        while let Some(value) = child_io.child_stdout_rx.recv().await {
-            response = Some(value);
-        }
-        let response = response.unwrap();
+        let (responses, exit_status) = commander.read_all_responses().await.unwrap();
+        // There should be at least one streamed response
+        assert!(responses.len() >= 1);
+        let response = responses.last().unwrap();
         assert!(matches!(response, ContainerResponse::Execute(_)));
         match response {
             ContainerResponse::Execute(response) => {
@@ -779,7 +958,13 @@ mod test {
                 assert_contains!(stdout, "running 1 test");
                 assert_contains!(stdout, "test tests::it_works ... ok");
             }
+            _ => {
+                panic!("Unexpected response type");
+            }
         }
+        // All tasks should end successfully
+        assert!(exit_status.success());
+        commander.join_tasks().await.unwrap();
     }
 
     #[tokio::test]
@@ -792,13 +977,11 @@ mod test {
 
         // Test code compiled with nightly toolchain builds (allows nightly flags)
         let backend = init_test_backend();
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
-        let container = container_factory.create_container(backend).await.unwrap();
-        // Note that the channel configuration in tests does not have an affect, but would in production docker containers.
-        let ContainerRunRet {
-            mut child,
-            mut child_io,
-        } = container.run(Channel::Nightly).await.unwrap();
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+        let mut container = container_factory
+            .create_container(Channel::Nightly)
+            .await
+            .unwrap();
 
         // Select an internal Rust function that does not have a stable counterpart and
         // should not be stabilized in the future. This should only compile and run on nightly.
@@ -816,25 +999,16 @@ mod test {
             OptLevel::Release,
             Channel::Nightly,
         );
+        let commander = container.execute_request(execute_command).await.unwrap();
 
-        let message = ContainerMessage::Execute(execute_command);
-        child_io
-            .child_stdin_tx
-            .as_ref()
-            .unwrap()
-            .send(message)
-            .await
-            .unwrap();
-
-        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
         assert!(exit_code.success());
 
         // Get the last value
-        let mut response: Option<ContainerResponse> = None;
-        while let Some(value) = child_io.child_stdout_rx.recv().await {
-            response = Some(value);
-        }
-        let response = response.unwrap();
+        let (responses, exit_status) = commander.read_all_responses().await.unwrap();
+        // There should be at least one streamed response
+        assert!(responses.len() >= 1);
+        let response = responses.last().unwrap();
         assert!(matches!(response, ContainerResponse::Execute(_)));
         match response {
             ContainerResponse::Execute(response) => {
@@ -843,7 +1017,13 @@ mod test {
                 let exit_code = response.exit_code.unwrap();
                 assert_eq!(exit_code, 0);
             }
+            _ => {
+                panic!("Unexpected response type");
+            }
         }
+        // All tasks should end successfully
+        assert!(exit_status.success());
+        commander.join_tasks().await.unwrap();
     }
 
     #[tokio::test]
@@ -855,12 +1035,11 @@ mod test {
         }
         // Test Corust can run the beta toolchain
         let backend = init_test_backend();
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS);
-        let container = container_factory.create_container(backend).await.unwrap();
-        let ContainerRunRet {
-            mut child,
-            mut child_io,
-        } = container.run(Channel::Beta).await.unwrap();
+        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+        let mut container = container_factory
+            .create_container(Channel::Beta)
+            .await
+            .unwrap();
 
         let execute_command = ExecuteCommand::new(
             "fn main() {
@@ -875,24 +1054,16 @@ mod test {
             Channel::Beta,
         );
 
-        let message = ContainerMessage::Execute(execute_command);
-        child_io
-            .child_stdin_tx
-            .as_ref()
-            .unwrap()
-            .send(message)
-            .await
-            .unwrap();
+        let commander = container.execute_request(execute_command).await.unwrap();
 
-        let exit_code = child.wait().with_timeout().await.unwrap().unwrap();
+        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
         assert!(exit_code.success());
 
         // Get the last value
-        let mut response: Option<ContainerResponse> = None;
-        while let Some(value) = child_io.child_stdout_rx.recv().await {
-            response = Some(value);
-        }
-        let response = response.unwrap();
+        let (responses, exit_status) = commander.read_all_responses().await.unwrap();
+        // There should be at least one streamed response
+        assert!(responses.len() >= 1);
+        let response = responses.last().unwrap();
         assert!(matches!(response, ContainerResponse::Execute(_)));
         match response {
             ContainerResponse::Execute(response) => {
@@ -901,6 +1072,12 @@ mod test {
                 let exit_code = response.exit_code.unwrap();
                 assert_eq!(exit_code, 0);
             }
+            _ => {
+                panic!("Unexpected response type");
+            }
         }
+        // All tasks should end successfully
+        assert!(exit_status.success());
+        commander.join_tasks().await.unwrap();
     }
 }

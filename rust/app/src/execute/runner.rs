@@ -9,8 +9,13 @@ use std::{
 use corust_components::{
     RunConfig, RunConfigAction, RunConfigExec, RunStateUpdate, RunStatus, ServerMessage,
 };
-use corust_sandbox::container::{ContainerError, ContainerFactory, ContainerRunRet};
-use corust_types::{ContainerMessage, ContainerResponse, ExecuteResponse, RunnerOutput};
+use corust_sandbox::container::{
+    Commander, CommanderError, ContainerError, ContainerFactory, DockerBackend,
+};
+use corust_types::{
+    Channel, ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse, RunnerOutput,
+    standalone::{StandaloneCommand, StandaloneResponse},
+};
 use fnv::FnvHashMap;
 use futures_util::SinkExt;
 use strum::{Display, IntoEnumIterator};
@@ -24,7 +29,7 @@ use warp::filters::ws::Message;
 
 use crate::{sessions::SharedSession, websocket::SharedWsSender};
 
-pub type SharedContainerFactory = Arc<ContainerFactory>;
+pub type SharedContainerFactory = Arc<ContainerFactory<DockerBackend>>;
 pub type SharedConcurrentRunChecker = Arc<ConcurrentRunChecker>;
 
 #[derive(Debug, Error)]
@@ -41,6 +46,8 @@ pub enum RunCodeError {
     ConcurrentCompilation(RunType),
     #[error(transparent)]
     JoinError(#[from] tokio::task::JoinError),
+    #[error(transparent)]
+    CommanderError(#[from] CommanderError),
 }
 
 /// Checks if concurrent complations of the same type are occurring. One per session.
@@ -76,7 +83,10 @@ impl ConcurrentRunChecker {
 
 #[derive(Debug, PartialEq, Eq, Hash, EnumIter, EnumString, Display, Clone, Copy)]
 pub enum RunType {
+    /// Runs a cargo command (special case of standalone command)
     Execute,
+    /// Runs a raw command interpreted as an command line program with arguments
+    Standalone,
     // Future: Miri, WASM, etc
 }
 
@@ -84,6 +94,7 @@ impl From<&ContainerMessage> for RunType {
     fn from(container_msg: &ContainerMessage) -> Self {
         match container_msg {
             ContainerMessage::Execute { .. } => RunType::Execute,
+            ContainerMessage::Standalone { .. } => RunType::Standalone,
         }
     }
 }
@@ -92,6 +103,7 @@ impl From<&ContainerResponse> for RunType {
     fn from(container_response: &ContainerResponse) -> Self {
         match container_response {
             ContainerResponse::Execute { .. } => RunType::Execute,
+            ContainerResponse::Standalone { .. } => RunType::Standalone,
         }
     }
 }
@@ -111,6 +123,22 @@ pub(crate) fn container_response_to_runner_output(
 
             RunnerOutput {
                 run_type: RunType::Execute.to_string(),
+                stdout,
+                stderr,
+                exit_code: *exit_code,
+            }
+        }
+        ContainerResponse::Standalone(StandaloneResponse {
+            stdout,
+            stderr,
+            exit_code,
+            ..
+        }) => {
+            let stdout = String::from_utf8_lossy(stdout).to_string();
+            let stderr = String::from_utf8_lossy(stderr).to_string();
+
+            RunnerOutput {
+                run_type: RunType::Standalone.to_string(),
                 stdout,
                 stderr,
                 exit_code: *exit_code,
@@ -182,9 +210,10 @@ impl Drop for RunProgressNotifier {
     }
 }
 
-// Only allows one concurrent execution of a given `RunType` for a session.
+/// Constructs messages to compile or execute user provided code using `cargo`
+/// Only allows one concurrent execution of a given `RunType` for a session.
 pub(crate) async fn run_code(
-    container_msg: ContainerMessage,
+    execute_command: ExecuteCommand,
     session: SharedSession,
     container_factory: SharedContainerFactory,
     container_response_tx: Sender<ContainerResponse>,
@@ -192,37 +221,34 @@ pub(crate) async fn run_code(
     username: String,
 ) -> Result<(), RunCodeError> {
     // Check and disallow concurrent compilations in the same session
+    let container_msg = ContainerMessage::Execute(execute_command.clone());
     let run_type = RunType::from(&container_msg);
     let run_progress_notifier =
         RunProgressNotifier::new(session.clone(), run_type, bcast_tx.clone());
     run_progress_notifier.try_acquire_code_lock().await?;
+    let channel = execute_command.channel;
 
-    let container = container_factory.create_container_docker_backend().await?;
+    let mut container = container_factory.create_container(channel).await?;
     // Shared factory no longer needed
     std::mem::drop(container_factory);
 
     // Inform other clients about run configuration change
     let run_config = RunConfig {
-        opt_level: container_msg.opt_level(),
-        channel: container_msg.channel(),
-        cargo_command: container_msg.cargo_command(),
+        opt_level: execute_command.opt_level,
+        channel,
+        cargo_command: execute_command.cargo_command,
     };
     session.set_run_config(run_config);
     let run_config_msg =
         ServerMessage::RunConfigAction(RunConfigAction::RecentExecution(RunConfigExec {
             run_config,
-            code: container_msg.code().to_string(),
+            code: execute_command.code.clone(),
             username,
         }));
     if let Err(e) = bcast_tx.send(run_config_msg) {
         // Not an error, just means all receiver handles have been closed
         log::info!("All receiver handles have been closed. {e:?}");
     }
-
-    let ContainerRunRet {
-        mut child,
-        mut child_io,
-    } = container.run(container_msg.channel()).await?;
 
     // Implicit starting state of all executions, an empty stdout/stdin. Useful to reset all users previous output
     // if existing from previous runs.
@@ -233,53 +259,53 @@ pub(crate) async fn run_code(
         exit_code: None,
     });
 
-    // `child_stdin_tx` is always `Some()` after construction via `container.run()`
-    child_io
-        .child_stdin_tx
-        .as_ref()
-        .unwrap()
-        .send(container_msg)
-        .await?;
-
     container_response_tx.send(clear_output).await?;
 
-    // Read from child stdout until it closes. Do not wait the child before this otherwise
-    // the task will wait until execution is complete so the intermediate stdout will not be streamed
-    while let Some(container_response) = child_io.child_stdout_rx.recv().await {
-        log::debug!("App runner received ContainerResponse");
-        log::trace!("Container response: {:?}", container_response);
-        container_response_tx.send(container_response).await?;
-    }
-
-    // Waiting for child should be fast since the stdout closing indicates the child is finished running
-    let exit_code = child.wait().await.unwrap();
-    log::debug!("Runner exited with code {:?}", exit_code);
-
-    // Join tasks listening to child stdout and stderr
-    while let Some(e) = child_io.tasks.join_next().await {
-        // Tasks only join after the `child.wait()`, which indicates the child
-        // has finished running. Drop stdin to allow `child_stdin_rx` to terminate and for all child io tasks to
-        // join, otherwise only stderr/stdout will finish.
-        std::mem::swap(&mut child_io.child_stdin_tx, &mut None);
-        match e? {
-            Ok(()) => {}
-            Err(e) => {
-                log::error!("Received container error: {:?}", e);
-                return Err(e)?;
-            }
-        }
-    }
+    let commander = container.execute_request(execute_command).await?;
+    let exit_status = commander
+        .stream_responses(container_response_tx.clone())
+        .await?;
 
     // Only return error on non zero exit code after the concurrent run flag is reset
-    if !exit_code.success() {
+    if !exit_status.success() {
         log::error!(
             "Runner exited code execution with non zero code: {:?}",
-            exit_code
+            exit_status
         );
-        return Err(RunCodeError::RunnerNonZeroExit(exit_code));
+        return Err(RunCodeError::RunnerNonZeroExit(exit_status));
     }
     Ok(())
 }
+
+// /// Runs a raw command interpreted as an command line program with arguments
+// /// Currently only used to run `rustc --version` to check the rustc version
+// pub(crate) async fn run_command(
+//     standalone_command: StandaloneCommand,
+//     container_factory: SharedContainerFactory,
+//     channel: Channel,
+// ) -> Result<Option<ContainerResponse>, RunCodeError> {
+//     let container = container_factory.create_container(channel).await?;
+//     // Shared factory no longer needed
+//     std::mem::drop(container_factory);
+
+//     let container_msg = ContainerMessage::Standalone(standalone_command);
+//     container.execute_request(container_msg).await?;
+
+//     // Read from child stdout until it closes. This streams the child stdout, but `run_command` does not necessarily need to read
+//     // results in a streaming fashion. Typically, this function runs short lived commands (like rustc --version) instead of long running
+//     // compilations / programs
+//     let mut final_response = None;
+//     while let Some(container_response) = child_io.child_stdout_rx.recv().await {
+//         log::debug!("App runner received ContainerResponse");
+//         log::trace!("Container response: {:?}", container_response);
+//         final_response = Some(container_response);
+//     }
+
+//     // Waiting for child should be fast since the stdout closing indicates the child is finished running
+//     let exit_code = child.wait().await.unwrap();
+//     log::debug!("Runner exited with code {:?}", exit_code);
+//     Ok(final_response)
+// }
 
 // Helpers for sending ws notifications
 pub(crate) async fn ws_notify_concurrent_code_error(

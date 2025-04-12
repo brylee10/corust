@@ -62,6 +62,9 @@ async fn listen<P: AsRef<Path>>(
                                 )
                                 .await?;
                             }
+                            ContainerMessage::Standalone(standalone_command) => {
+                                unimplemented!("Standalone command not implemented yet");
+                            }
                         }
                         // The runner can execute one command, then it can receive no more
                         stdin_rx.close();

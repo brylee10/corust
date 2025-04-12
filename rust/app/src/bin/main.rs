@@ -4,6 +4,7 @@ use std::sync::Arc;
 
 use ansi_term::Color;
 use corust_app::db::{CompilationTable, DocumentTable, Table, UserTable};
+use corust_app::sandbox_metadata::SandboxMetadata;
 use env_logger::Builder;
 use log::Level;
 
@@ -13,7 +14,7 @@ use warp::Filter;
 use corust_app::sessions::{SessionMap, SharedSessionMap, spawn_background_session_managers};
 use corust_app::users::user_join_route;
 use corust_app::{root_page, websocket::*};
-use corust_sandbox::container::ContainerFactory;
+use corust_sandbox::container::{ContainerFactory, DockerBackend};
 
 /// The maximum number of concurrent containers that can be running at once. Used to avoid overloading the CPU
 /// with many concurrent CPU intensive tasks which significantly outnumber the number of cores.
@@ -48,8 +49,12 @@ async fn main() {
         .init();
 
     log::info!("Starting Rust server! 🚀");
+    let _sandbox_metadata = Arc::new(SandboxMetadata::default());
     let session_map: SharedSessionMap = Arc::new(SessionMap::new());
-    let container_factory = Arc::new(ContainerFactory::new(MAX_CONCURRENT_CONTAINERS));
+    let container_factory = Arc::new(ContainerFactory::new(
+        MAX_CONCURRENT_CONTAINERS,
+        DockerBackend::new(),
+    ));
 
     // Initialize database tables
     let db_path: PathBuf = std::env::var("DB_PATH")

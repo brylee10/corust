@@ -90,7 +90,6 @@ impl ExecuteCommand {
 }
 
 // Mirrors `std::process::Output`
-// Implements `Default` to send a clear responses at the start of all executions.
 // All executions start with empty stdout and stderr, clearing output from prior runs.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ExecuteResponse {
