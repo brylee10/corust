@@ -5,9 +5,9 @@ use corust_components::{
     server::ServerError,
 };
 use rand::Rng;
-use random_color::{color_dictionary::ColorDictionary, Color, Luminosity, RandomColor};
+use random_color::{Color, Luminosity, RandomColor, color_dictionary::ColorDictionary};
 use serde::{Deserialize, Serialize};
-use warp::{path, reject, Filter};
+use warp::{Filter, path, reject};
 
 use crate::{
     db::{DocumentTable, DocumentTableKey, Table, UserTable, UserTableKey},
@@ -36,7 +36,7 @@ const NAMES: [&str; 50] = [
     "Hashbrown",
     "Reqwest",
     "Zstd",
-    "Memchr",
+    "Dashmap",
     "OnceCell",
     "LazyStatic",
     "Indexmap",
@@ -48,21 +48,21 @@ const NAMES: [&str; 50] = [
     "Futures",
     "Ahash",
     "Tracing",
-    "PinUtils",
+    "Pin",
     "Hyper",
     "Tinyvec",
-    "Spin",
+    "Crate",
     "Tempfile",
     "Nom",
-    "Fastrand",
-    "Nix",
-    "EnvLogger",
+    "Cargo",
+    "Lifetime",
+    "Ownership",
     "Rustix",
-    "H2",
-    "Adler",
-    "Flate2",
+    "Tower",
+    "Axum",
+    "Tracing",
     "Either",
-    "Humantime",
+    "Uuid",
     "Instant",
     "StaticAssertions",
     "StructOpt",
@@ -145,8 +145,8 @@ fn random_color(existing_colors: Vec<&str>) -> String {
         .map(|hue| {
             RandomColor::new()
                 .hue(*hue)
-                .luminosity(Luminosity::Dark) // Optional
-                .alpha(1.0) // Optional
+                .luminosity(Luminosity::Dark)
+                .alpha(1.0)
                 .dictionary(ColorDictionary::new())
                 .to_rgb_string()
         })

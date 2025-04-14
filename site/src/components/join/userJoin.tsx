@@ -8,12 +8,7 @@ import {
   setUserState,
   UserStateDefined,
 } from "../../store/slices/userSlice.tsx";
-
-interface UserJoinResponse {
-  // Rust server field names in snake case
-  user_id: bigint;
-  username: string;
-}
+import { clientJoin } from "../../api/userJoin.ts";
 
 function UserJoin() {
   const dispatch = useDispatch();
@@ -21,73 +16,32 @@ function UserJoin() {
   // Route params
   const params = useParams();
 
+  // Initialize the `Client` when the component mounts.
   useEffect(() => {
-    console.debug("UserState: ", userState);
-  }, [userState]);
+    console.debug("Requesting client join");
 
-  const clientJoin = useCallback(
-    async () => {
-      const headers = new Headers();
-      headers.append("Content-Type", "application/json");
-
-      // Will only throw an error if network error encountered
+    async function joinSession() {
       try {
-        console.debug("Sending fetch request");
-        // Get the user id for the session, if it exists
-        const userId = sessionStorage.getItem(
-          "sessionUserId_" + params.sessionId
-        );
-        let fetchUri;
-        if (userId) {
-          console.debug("User id found in session storage: ", userId);
-          fetchUri = `${process.env.REACT_APP_ENDPOINT_URI}/join/${params.sessionId}/${userId}`;
-        } else {
-          fetchUri = `${process.env.REACT_APP_ENDPOINT_URI}/join/${params.sessionId}`;
-        }
+        const userJoinResponse = await clientJoin(params.sessionId as string);
 
-        console.debug("fetchUri: ", fetchUri);
-        const response = await fetch(fetchUri, {
-          method: "POST",
-          headers: headers,
-        });
-        const text = await response.text();
-        console.debug("Fetch Response: ", text);
-        const userJoinResponse: UserJoinResponse = JSON.parse(
-          text,
-          (key, value) => {
-            // `response` default is a `number`, but this will always be an integer
-            // so cast `user_id` to BigInt
-            if (key === "user_id") return BigInt(value);
-            return value;
-          }
-        );
-
-        // Initialize new client
         dispatch(
           setUserState({
             userId: userJoinResponse.user_id.toString(),
             username: userJoinResponse.username,
           })
         );
+
         sessionStorage.setItem(
           "sessionUserId_" + params.sessionId,
           userJoinResponse.user_id.toString()
         );
       } catch (error) {
-        // TODO: user join failed, add retry or popup notification?
-        console.error("Fetch error: ", error);
+        console.error("Failed to join session:", error);
       }
-    },
-    // `sessionId` should not change, so this should only load once
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    []
-  );
+    }
 
-  // Initialize the `Client` when the component mounts.
-  useEffect(() => {
-    console.debug("Requesting client join");
-    clientJoin();
-  }, [clientJoin]);
+    joinSession();
+  }, [dispatch, params.sessionId]);
 
   // Explicitly check for equivalence to `undefined` otherwise `userId = 0` is falsey as well
   // one of the few times React StrictMode hid a bug!

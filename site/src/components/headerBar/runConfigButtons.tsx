@@ -156,9 +156,10 @@ const commonButtonStyle = {
 };
 
 const commonTypographyStyle = {
-  maxWidth: "250px",
+  maxWidth: "300px",
   // No auto capitalization
   textTransform: "none",
+  fontSize: "12px",
 };
 
 interface StyledPopoverProps {
@@ -286,11 +287,7 @@ function RunConfigButtons({
       <Typography variant="subtitle2" fontWeight="bold" color="text.primary">
         {channel}
       </Typography>
-      <Typography
-        variant="subtitle2"
-        color="text.secondary"
-        sx={commonTypographyStyle}
-      >
+      <Typography color="text.secondary" sx={commonTypographyStyle}>
         {description}
       </Typography>
     </Button>

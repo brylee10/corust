@@ -1,9 +1,10 @@
-#![allow(dead_code)]
+#![deny(dead_code)]
 
 use warp::Filter;
 
 pub mod cache;
 pub mod db;
+pub mod errors;
 pub mod execute;
 pub mod response_codes;
 pub mod sandbox_metadata;

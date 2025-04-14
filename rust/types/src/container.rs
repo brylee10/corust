@@ -5,11 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    ExecuteCommand,
-    execution::ExecuteResponse,
-    standalone::{StandaloneCommand, StandaloneResponse},
-};
+use crate::{ExecuteCommand, execution::ExecuteResponse, standalone::StandaloneCommand};
 
 /// Represents a message sent to the container to execute code
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -22,8 +18,8 @@ pub enum ContainerMessage {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum ContainerResponse {
+    /// Response from executing a [`ExecuteCommand`] or a [`StandaloneCommand`]
     Execute(ExecuteResponse),
-    Standalone(StandaloneResponse),
 }
 
 impl Display for ContainerResponse {
@@ -36,32 +32,26 @@ impl Display for ContainerResponse {
                 writeln!(f, "stderr: {}", String::from_utf8_lossy(&response.stderr))?;
                 writeln!(f, "exit code: {:?}", response.exit_code)?;
             }
-            ContainerResponse::Standalone(response) => {
-                writeln!(f, "Standalone response")?;
-                writeln!(f, "stdout: {}", String::from_utf8_lossy(&response.stdout))?;
-                writeln!(f, "stderr: {}", String::from_utf8_lossy(&response.stderr))?;
-                writeln!(f, "exit code: {:?}", response.exit_code)?;
-            }
         }
         Ok(())
     }
 }
 
 /// A Rust compiler version
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub struct Version {
     pub release: String,
     pub commit_hash: String,
     pub commit_date: String,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ChannelVersions {
     pub rustc: Version,
 }
 
 /// Versions for each channel
-#[derive(Debug, PartialEq, Eq, Clone)]
+#[derive(Debug, PartialEq, Eq, Clone, Serialize)]
 pub struct Versions {
     pub stable: ChannelVersions,
     pub beta: ChannelVersions,

@@ -3,7 +3,7 @@
 
 use std::{
     marker::PhantomData,
-    process::{ExitCode, ExitStatus, Stdio},
+    process::{ExitStatus, Stdio},
     sync::Arc,
 };
 
@@ -95,18 +95,22 @@ pub enum ContainerError {
 pub enum VersionsError {
     #[snafu(display("Rustc version missing"))]
     RustcVersionMissing,
-    #[snafu(display("Unexpected multiple responses. Expected 1, got {}", count))]
-    UnexpectedMultipleResponses { count: usize },
+    #[snafu(display(
+        "Unexpected multiple responses. Expected at least {}, got {}",
+        min,
+        count
+    ))]
+    InsufficientResponses { min: usize, count: usize },
     #[snafu(display("Unexpected response: {:?}", response))]
     UnexpectedResponse { response: String },
     #[snafu(display("Commander error: {}", source))]
     Commander { source: CommanderError },
-    #[snafu(display("Failed to get versions for beta channel"))]
-    BetaVersions,
-    #[snafu(display("Failed to get versions for nightly channel"))]
-    NightlyVersions,
-    #[snafu(display("Failed to get versions for stable channel"))]
-    StableVersions,
+    #[snafu(display("Failed to get versions for beta channel: {}", details))]
+    BetaVersions { details: String },
+    #[snafu(display("Failed to get versions for nightly channel: {}", details))]
+    NightlyVersions { details: String },
+    #[snafu(display("Failed to get versions for stable channel: {}", details))]
+    StableVersions { details: String },
     #[snafu(display("Error creating a container"))]
     CreateContainer { source: ContainerError },
     #[snafu(display("Exit status is not success: {:?}", exit_status))]
@@ -146,7 +150,7 @@ pub trait Backend {
 
         // https://docs.rs/tokio/latest/tokio/process/struct.Child.html#fields
         let stdin = child.stdin.take().ok_or(ContainerError::StdinCapture)?;
-        let stdout = child.stdout.take().ok_or(ContainerError::StdoutCapture)?;
+        let stdout: ChildStdout = child.stdout.take().ok_or(ContainerError::StdoutCapture)?;
         let stderr = child.stderr.take().ok_or(ContainerError::StderrCapture)?;
 
         let run_container_result = RunContainerResult {
@@ -182,7 +186,7 @@ impl Backend for DockerBackend {
             .arg(&container_name)
             .arg("--rm")
             .arg(image_name);
-        cmd.arg("runner").arg("/corust");
+        cmd.arg("runner").arg("/corust").arg("debug");
         cmd
     }
 }
@@ -257,10 +261,11 @@ impl<B: Backend> ContainerFactory<B> {
             .acquire_owned()
             .await
             .context(AcquireSemaphoreSnafu)?;
-        Ok(Container::new(run_container_permit, &self.backend, channel).await?)
+        Container::new(run_container_permit, &self.backend, channel).await
     }
 
-    /// Find the Rust versions of a given backend
+    /// Find the versions of various tools and environments (rustc, could be extended to miri, fmt, clippy, etc)
+    /// of a given backend
     pub async fn versions(&self) -> Result<Versions, VersionsError> {
         let [stable, beta, nightly] =
             [Channel::Stable, Channel::Beta, Channel::Nightly].map(|c| async move {
@@ -273,9 +278,15 @@ impl<B: Backend> ContainerFactory<B> {
 
         let (stable, beta, nightly) = join!(stable, beta, nightly);
 
-        let stable = stable.map_err(|_| VersionsError::StableVersions)?;
-        let beta = beta.map_err(|_| VersionsError::BetaVersions)?;
-        let nightly = nightly.map_err(|_| VersionsError::NightlyVersions)?;
+        let stable = stable.map_err(|e| VersionsError::StableVersions {
+            details: e.to_string(),
+        })?;
+        let beta = beta.map_err(|e| VersionsError::BetaVersions {
+            details: e.to_string(),
+        })?;
+        let nightly = nightly.map_err(|e| VersionsError::NightlyVersions {
+            details: e.to_string(),
+        })?;
 
         Ok(Versions {
             stable,
@@ -336,6 +347,7 @@ impl<B: Backend> Container<B> {
     }
 
     /// Retrieve the channel versions (stable, beta, nightly) of the sandbox
+    /// May retrieve more versions in the future, tools like miri, fmt, clippy etc
     pub(crate) async fn versions(&mut self) -> Result<ChannelVersions, VersionsError> {
         let rustc_version = self.rustc_version().await?;
         let rustc_version = rustc_version.ok_or(VersionsError::RustcVersionMissing)?;
@@ -363,22 +375,20 @@ impl<B: Backend> Container<B> {
             return Err(VersionsError::ExitStatusNotSuccess { exit_status });
         }
 
-        if responses.len() != 1 {
-            return Err(VersionsError::UnexpectedMultipleResponses {
+        if responses.is_empty() {
+            return Err(VersionsError::InsufficientResponses {
+                min: 1,
                 count: responses.len(),
             });
         }
-        let response = responses.first().unwrap();
+        let response = responses.last().unwrap();
 
         match response {
-            ContainerResponse::Standalone(response) => {
+            ContainerResponse::Execute(response) => {
                 let stdout = String::from_utf8_lossy(&response.stdout);
                 let version = Version::parse_rustc_version_verbose(&stdout);
                 Ok(Some(version))
             }
-            _ => Err(VersionsError::UnexpectedResponse {
-                response: response.to_string(),
-            }),
         }
     }
 
@@ -389,6 +399,20 @@ impl<B: Backend> Container<B> {
         execute_command: ExecuteCommand,
     ) -> Result<&mut Commander, ContainerError> {
         let message = ContainerMessage::Execute(execute_command);
+        self.commander
+            .send_message(message)
+            .await
+            .context(ContainerCommanderSnafu)?;
+        Ok(&mut self.commander)
+    }
+
+    /// Send a standalone command to the container and return the [`Commander`] which gives access to
+    /// the child process and IO handles.
+    pub async fn standalone_request(
+        &mut self,
+        standalone_command: StandaloneCommand,
+    ) -> Result<&mut Commander, ContainerError> {
+        let message = ContainerMessage::Standalone(standalone_command);
         self.commander
             .send_message(message)
             .await
@@ -471,15 +495,10 @@ impl Commander {
         // Collect responses until the channel is closed
         let mut responses = Vec::new();
 
-        loop {
-            match self.child_io.child_stdout_rx.recv().await {
-                Some(response) => {
-                    log::debug!("App runner received ContainerResponse");
-                    log::trace!("Container response: {:?}", response);
-                    responses.push(response);
-                }
-                None => break, // Channel is closed
-            }
+        while let Some(response) = self.child_io.child_stdout_rx.recv().await {
+            log::debug!("App runner received ContainerResponse");
+            log::trace!("Container response: {:?}", response);
+            responses.push(response);
         }
 
         while let Ok(response) = self.child_io.child_stdout_rx.try_recv() {
@@ -540,7 +559,6 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
                         });
                     }
                 }
-                _ => { /* Only user provided executable code can overflow stderr/stdout */ }
             }
             child_stdout_tx
                 .send(response)
@@ -689,184 +707,60 @@ mod test {
 
     impl<T: Future + Sized> Timeout for T {}
 
-    #[tokio::test]
-    async fn test_hello_world() {
-        let backend = init_test_backend();
-        let container_factory: ContainerFactory<TestContainerBackend> =
-            ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
-        let mut container = container_factory
-            .create_container(Channel::Stable)
-            .await
-            .unwrap();
+    mod execute {
+        use super::*;
+        #[tokio::test]
+        async fn test_hello_world() {
+            let backend = init_test_backend();
+            let container_factory: ContainerFactory<TestContainerBackend> =
+                ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+            let mut container = container_factory
+                .create_container(Channel::Stable)
+                .await
+                .unwrap();
 
-        let execute_command = ExecuteCommand::new(
-            "fn main() { println!(\"Hello world!\"); }".to_string(),
-            TargetType::Binary,
-            CargoCommand::Run,
-            OptLevel::Release,
-            Channel::Stable,
-        );
-        let _ = container.execute_request(execute_command).await.unwrap();
-        // Sends second `ExecuteCommand` to test it is ignored because runner does not process any
-        // stdin messages after first `ExecuteCommand`.
-        let execute_command = ExecuteCommand::new(
-            "fn main() {
+            let execute_command = ExecuteCommand::new(
+                "fn main() { println!(\"Hello world!\"); }".to_string(),
+                TargetType::Binary,
+                CargoCommand::Run,
+                OptLevel::Release,
+                Channel::Stable,
+            );
+            let _ = container.execute_request(execute_command).await.unwrap();
+            // Sends second `ExecuteCommand` to test it is ignored because runner does not process any
+            // stdin messages after first `ExecuteCommand`.
+            let execute_command = ExecuteCommand::new(
+                "fn main() {
                 println!(\"Goodbye!\");
             }"
-            .to_string(),
-            TargetType::Binary,
-            CargoCommand::Run,
-            OptLevel::Release,
-            Channel::Stable,
-        );
-        let commander = container.execute_request(execute_command).await.unwrap();
+                .to_string(),
+                TargetType::Binary,
+                CargoCommand::Run,
+                OptLevel::Release,
+                Channel::Stable,
+            );
+            let commander = container.execute_request(execute_command).await.unwrap();
 
-        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
-        assert!(exit_code.success());
+            let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
+            assert!(exit_code.success());
 
-        // Get the last value
-        let mut response = None;
-        while let Some(value) = commander.child_io.child_stdout_rx.recv().await {
-            response = Some(value);
-        }
-        let response = response.unwrap();
-        assert!(matches!(response, ContainerResponse::Execute(_)));
-        match response {
-            ContainerResponse::Execute(response) => {
-                let stdout = String::from_utf8_lossy(&response.stdout);
-                assert_contains!(stdout, "Hello world!\n");
+            // Get the last value
+            let mut response = None;
+            while let Some(value) = commander.child_io.child_stdout_rx.recv().await {
+                response = Some(value);
             }
-            _ => {
-                panic!("Unexpected response type");
+            let response = response.unwrap();
+            assert!(matches!(response, ContainerResponse::Execute(_)));
+            match response {
+                ContainerResponse::Execute(response) => {
+                    let stdout = String::from_utf8_lossy(&response.stdout);
+                    assert_contains!(stdout, "Hello world!\n");
+                }
             }
         }
-    }
 
-    #[tokio::test]
-    async fn test_read_stderr() {
-        let backend = init_test_backend();
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
-        let mut container = container_factory
-            .create_container(Channel::Stable)
-            .await
-            .unwrap();
-
-        let execute_command = ExecuteCommand::new(
-            "fn main() {
-                panic!(\"An error occurred!\");
-            }"
-            .to_string(),
-            TargetType::Binary,
-            CargoCommand::Run,
-            OptLevel::Release,
-            Channel::Stable,
-        );
-        let commander = container.execute_request(execute_command).await.unwrap();
-
-        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
-        assert!(exit_code.success());
-
-        // Get the last value
-        let (responses, exit_status) = commander.read_all_responses().await.unwrap();
-        // There should be at least one streamed response
-        assert!(responses.len() >= 1);
-        let response = responses.last().unwrap();
-        assert!(matches!(response, ContainerResponse::Execute(_)));
-        match response {
-            ContainerResponse::Execute(response) => {
-                let stderr = String::from_utf8_lossy(&response.stderr);
-                assert_contains!(stderr, "An error occurred!\n");
-            }
-            _ => {
-                panic!("Unexpected response type");
-            }
-        }
-        // All tasks should end successfully
-        assert!(exit_status.success());
-        commander.join_tasks().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_long_test_error() {
-        // "A meta test". Tests that the test infrastructure helper `with_timeout` works properly by timing out
-        // any task that takes longer than `TEST_TIMEOUT_SEC` seconds.
-        let res = tokio::time::sleep(std::time::Duration::from_secs(TEST_TIMEOUT_SEC + 1))
-            .with_timeout()
-            .await;
-        assert!(matches!(res, Err(tokio::time::error::Elapsed { .. })));
-    }
-
-    #[tokio::test]
-    async fn test_library_crate() {
-        // Tests a library target type can be compiled
-        let backend = init_test_backend();
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
-        let mut container = container_factory
-            .create_container(Channel::Stable)
-            .await
-            .unwrap();
-
-        let execute_command = ExecuteCommand::new(
-            "struct Test { x: i32 }".to_string(),
-            TargetType::Library,
-            CargoCommand::Build,
-            OptLevel::Release,
-            Channel::Stable,
-        );
-        let commander = container.execute_request(execute_command).await.unwrap();
-
-        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
-        assert!(exit_code.success());
-
-        // Get the last value
-        let (responses, exit_status) = commander.read_all_responses().await.unwrap();
-        // There should be at least one streamed response
-        assert!(responses.len() >= 1);
-        let response = responses.last().unwrap();
-        assert!(matches!(response, ContainerResponse::Execute(_)));
-        match response {
-            ContainerResponse::Execute(response) => {
-                let stderr = String::from_utf8_lossy(&response.stderr);
-                assert_contains!(stderr, "Finished `release` profile");
-            }
-            _ => {
-                panic!("Unexpected response type");
-            }
-        }
-        // All tasks should end successfully
-        assert!(exit_status.success());
-        commander.join_tasks().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_opt_level_build() {
-        // Tests code is compiled in debug mode when [`OptLevel::Debug`] is passed
-        // and in release mode when [`OptLevel::Release`] is passed.
-        // The code will panic in debug mode but not in release mode.
-        struct ExpectedOutput {
-            stderr: String,
-            stdout: String,
-            exit_code: i32,
-        }
-
-        let expected_output = [
-            ExpectedOutput {
-                stderr: "thread 'main' panicked".to_string(),
-                stdout: "".to_string(),
-                exit_code: 101,
-            },
-            ExpectedOutput {
-                stderr: "".to_string(),
-                stdout: "Hello world".to_string(),
-                exit_code: 0,
-            },
-        ];
-
-        for (opt_level, expected_output) in [OptLevel::Debug, OptLevel::Release]
-            .iter()
-            .zip(expected_output.iter())
-        {
-            // One container (which maps 1-1 with a runner) must be created for each run
+        #[tokio::test]
+        async fn test_read_stderr() {
             let backend = init_test_backend();
             let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
             let mut container = container_factory
@@ -874,59 +768,174 @@ mod test {
                 .await
                 .unwrap();
 
-            // Only panics in debug mode, prints "Hello world" in release mode
             let execute_command = ExecuteCommand::new(
-                r#"fn main() { debug_assert!(false); println!("Hello world") }"#.to_string(),
+                "fn main() {
+                panic!(\"An error occurred!\");
+            }"
+                .to_string(),
                 TargetType::Binary,
                 CargoCommand::Run,
-                *opt_level,
+                OptLevel::Release,
                 Channel::Stable,
             );
             let commander = container.execute_request(execute_command).await.unwrap();
 
-            // Child process succeeds, but the code it runs will panic
             let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
             assert!(exit_code.success());
 
-            // Get the last value, the output is built up incrementally
+            // Get the last value
             let (responses, exit_status) = commander.read_all_responses().await.unwrap();
             // There should be at least one streamed response
-            assert!(responses.len() >= 1);
+            assert!(!responses.is_empty());
             let response = responses.last().unwrap();
             assert!(matches!(response, ContainerResponse::Execute(_)));
             match response {
                 ContainerResponse::Execute(response) => {
                     let stderr = String::from_utf8_lossy(&response.stderr);
-                    assert_contains!(stderr, &expected_output.stderr);
-                    let stdout = String::from_utf8_lossy(&response.stdout);
-                    assert_contains!(stdout, &expected_output.stdout);
-                    let exit_code = response.exit_code.unwrap();
-                    // Exit code, convention for panic:
-                    // https://users.rust-lang.org/t/solved-why-101-exit-code-when-use-panic/80061
-                    assert_eq!(exit_code, expected_output.exit_code);
-                }
-                _ => {
-                    panic!("Unexpected response type");
+                    assert_contains!(stderr, "An error occurred!\n");
                 }
             }
             // All tasks should end successfully
             assert!(exit_status.success());
             commander.join_tasks().await.unwrap();
         }
-    }
 
-    #[tokio::test]
-    async fn test_cargo_test() {
-        // Test code compiled with `cargo test` runs tests
-        let backend = init_test_backend();
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
-        let mut container = container_factory
-            .create_container(Channel::Stable)
-            .await
-            .unwrap();
+        #[tokio::test]
+        async fn test_long_test_error() {
+            // "A meta test". Tests that the test infrastructure helper `with_timeout` works properly by timing out
+            // any task that takes longer than `TEST_TIMEOUT_SEC` seconds.
+            let res = tokio::time::sleep(std::time::Duration::from_secs(TEST_TIMEOUT_SEC + 1))
+                .with_timeout()
+                .await;
+            assert!(matches!(res, Err(tokio::time::error::Elapsed { .. })));
+        }
 
-        let execute_command = ExecuteCommand::new(
-            r#"
+        #[tokio::test]
+        async fn test_library_crate() {
+            // Tests a library target type can be compiled
+            let backend = init_test_backend();
+            let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+            let mut container = container_factory
+                .create_container(Channel::Stable)
+                .await
+                .unwrap();
+
+            let execute_command = ExecuteCommand::new(
+                "struct Test { x: i32 }".to_string(),
+                TargetType::Library,
+                CargoCommand::Build,
+                OptLevel::Release,
+                Channel::Stable,
+            );
+            let commander = container.execute_request(execute_command).await.unwrap();
+
+            let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
+            assert!(exit_code.success());
+
+            // Get the last value
+            let (responses, exit_status) = commander.read_all_responses().await.unwrap();
+            // There should be at least one streamed response
+            assert!(!responses.is_empty());
+            let response = responses.last().unwrap();
+            assert!(matches!(response, ContainerResponse::Execute(_)));
+            match response {
+                ContainerResponse::Execute(response) => {
+                    let stderr = String::from_utf8_lossy(&response.stderr);
+                    assert_contains!(stderr, "Finished `release` profile");
+                }
+            }
+            // All tasks should end successfully
+            assert!(exit_status.success());
+            commander.join_tasks().await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn test_opt_level_build() {
+            // Tests code is compiled in debug mode when [`OptLevel::Debug`] is passed
+            // and in release mode when [`OptLevel::Release`] is passed.
+            // The code will panic in debug mode but not in release mode.
+            struct ExpectedOutput {
+                stderr: String,
+                stdout: String,
+                exit_code: i32,
+            }
+
+            let expected_output = [
+                ExpectedOutput {
+                    stderr: "thread 'main' panicked".to_string(),
+                    stdout: "".to_string(),
+                    exit_code: 101,
+                },
+                ExpectedOutput {
+                    stderr: "".to_string(),
+                    stdout: "Hello world".to_string(),
+                    exit_code: 0,
+                },
+            ];
+
+            for (opt_level, expected_output) in [OptLevel::Debug, OptLevel::Release]
+                .iter()
+                .zip(expected_output.iter())
+            {
+                // One container (which maps 1-1 with a runner) must be created for each run
+                let backend = init_test_backend();
+                let container_factory =
+                    ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+                let mut container = container_factory
+                    .create_container(Channel::Stable)
+                    .await
+                    .unwrap();
+
+                // Only panics in debug mode, prints "Hello world" in release mode
+                let execute_command = ExecuteCommand::new(
+                    r#"fn main() { debug_assert!(false); println!("Hello world") }"#.to_string(),
+                    TargetType::Binary,
+                    CargoCommand::Run,
+                    *opt_level,
+                    Channel::Stable,
+                );
+                let commander = container.execute_request(execute_command).await.unwrap();
+
+                // Child process succeeds, but the code it runs will panic
+                let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
+                assert!(exit_code.success());
+
+                // Get the last value, the output is built up incrementally
+                let (responses, exit_status) = commander.read_all_responses().await.unwrap();
+                // There should be at least one streamed response
+                assert!(!responses.is_empty());
+                let response = responses.last().unwrap();
+                assert!(matches!(response, ContainerResponse::Execute(_)));
+                match response {
+                    ContainerResponse::Execute(response) => {
+                        let stderr = String::from_utf8_lossy(&response.stderr);
+                        assert_contains!(stderr, &expected_output.stderr);
+                        let stdout = String::from_utf8_lossy(&response.stdout);
+                        assert_contains!(stdout, &expected_output.stdout);
+                        let exit_code = response.exit_code.unwrap();
+                        // Exit code, convention for panic:
+                        // https://users.rust-lang.org/t/solved-why-101-exit-code-when-use-panic/80061
+                        assert_eq!(exit_code, expected_output.exit_code);
+                    }
+                }
+                // All tasks should end successfully
+                assert!(exit_status.success());
+                commander.join_tasks().await.unwrap();
+            }
+        }
+
+        #[tokio::test]
+        async fn test_cargo_test() {
+            // Test code compiled with `cargo test` runs tests
+            let backend = init_test_backend();
+            let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+            let mut container = container_factory
+                .create_container(Channel::Stable)
+                .await
+                .unwrap();
+
+            let execute_command = ExecuteCommand::new(
+                r#"
             #[cfg(test)]
             mod tests {
                 #[test]
@@ -935,149 +944,181 @@ mod test {
                 }
             }
             "#
-            .to_string(),
-            TargetType::Library,
-            CargoCommand::Test,
-            OptLevel::Release,
-            Channel::Stable,
-        );
-        let commander = container.execute_request(execute_command).await.unwrap();
+                .to_string(),
+                TargetType::Library,
+                CargoCommand::Test,
+                OptLevel::Release,
+                Channel::Stable,
+            );
+            let commander = container.execute_request(execute_command).await.unwrap();
 
-        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
-        assert!(exit_code.success());
+            let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
+            assert!(exit_code.success());
 
-        // Get the last value
-        let (responses, exit_status) = commander.read_all_responses().await.unwrap();
-        // There should be at least one streamed response
-        assert!(responses.len() >= 1);
-        let response = responses.last().unwrap();
-        assert!(matches!(response, ContainerResponse::Execute(_)));
-        match response {
-            ContainerResponse::Execute(response) => {
-                let stdout = String::from_utf8_lossy(&response.stdout);
-                assert_contains!(stdout, "running 1 test");
-                assert_contains!(stdout, "test tests::it_works ... ok");
+            // Get the last value
+            let (responses, exit_status) = commander.read_all_responses().await.unwrap();
+            // There should be at least one streamed response
+            assert!(!responses.is_empty());
+            let response = responses.last().unwrap();
+            assert!(matches!(response, ContainerResponse::Execute(_)));
+            match response {
+                ContainerResponse::Execute(response) => {
+                    let stdout = String::from_utf8_lossy(&response.stdout);
+                    assert_contains!(stdout, "running 1 test");
+                    assert_contains!(stdout, "test tests::it_works ... ok");
+                }
             }
-            _ => {
-                panic!("Unexpected response type");
-            }
-        }
-        // All tasks should end successfully
-        assert!(exit_status.success());
-        commander.join_tasks().await.unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_nightly_build() {
-        // Gate test to only run on nightly channel
-        let version = rustc_version::version_meta().unwrap();
-        if !matches!(version.channel, rustc_version::Channel::Nightly) {
-            return;
+            // All tasks should end successfully
+            assert!(exit_status.success());
+            commander.join_tasks().await.unwrap();
         }
 
-        // Test code compiled with nightly toolchain builds (allows nightly flags)
-        let backend = init_test_backend();
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
-        let mut container = container_factory
-            .create_container(Channel::Nightly)
-            .await
-            .unwrap();
+        #[tokio::test]
+        async fn test_nightly_build() {
+            // Gate test to only run on nightly channel
+            let version = rustc_version::version_meta().unwrap();
+            if !matches!(version.channel, rustc_version::Channel::Nightly) {
+                return;
+            }
 
-        // Select an internal Rust function that does not have a stable counterpart and
-        // should not be stabilized in the future. This should only compile and run on nightly.
-        // https://doc.rust-lang.org/std/intrinsics/fn.unlikely.html
-        let execute_command = ExecuteCommand::new(
-            r#"
+            // Test code compiled with nightly toolchain builds (allows nightly flags)
+            let backend = init_test_backend();
+            let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+            let mut container = container_factory
+                .create_container(Channel::Nightly)
+                .await
+                .unwrap();
+
+            // Select an internal Rust function that does not have a stable counterpart and
+            // should not be stabilized in the future. This should only compile and run on nightly.
+            // https://doc.rust-lang.org/std/intrinsics/fn.unlikely.html
+            let execute_command = ExecuteCommand::new(
+                r#"
             #![feature(core_intrinsics)]
             fn main() {
                 let _ = std::intrinsics::unlikely(false);
             }
             "#
-            .to_string(),
-            TargetType::Binary,
-            CargoCommand::Build,
-            OptLevel::Release,
-            Channel::Nightly,
-        );
-        let commander = container.execute_request(execute_command).await.unwrap();
+                .to_string(),
+                TargetType::Binary,
+                CargoCommand::Build,
+                OptLevel::Release,
+                Channel::Nightly,
+            );
+            let commander = container.execute_request(execute_command).await.unwrap();
 
-        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
-        assert!(exit_code.success());
+            let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
+            assert!(exit_code.success());
 
-        // Get the last value
-        let (responses, exit_status) = commander.read_all_responses().await.unwrap();
-        // There should be at least one streamed response
-        assert!(responses.len() >= 1);
-        let response = responses.last().unwrap();
-        assert!(matches!(response, ContainerResponse::Execute(_)));
-        match response {
-            ContainerResponse::Execute(response) => {
-                let stderr = String::from_utf8_lossy(&response.stderr);
-                assert_contains!(stderr, "Finished `release` profile");
-                let exit_code = response.exit_code.unwrap();
-                assert_eq!(exit_code, 0);
+            // Get the last value
+            let (responses, exit_status) = commander.read_all_responses().await.unwrap();
+            // There should be at least one streamed response
+            assert!(!responses.is_empty());
+            let response = responses.last().unwrap();
+            assert!(matches!(response, ContainerResponse::Execute(_)));
+            match response {
+                ContainerResponse::Execute(response) => {
+                    let stderr = String::from_utf8_lossy(&response.stderr);
+                    assert_contains!(stderr, "Finished `release` profile");
+                    let exit_code = response.exit_code.unwrap();
+                    assert_eq!(exit_code, 0);
+                }
             }
-            _ => {
-                panic!("Unexpected response type");
+            // All tasks should end successfully
+            assert!(exit_status.success());
+            commander.join_tasks().await.unwrap();
+        }
+
+        #[tokio::test]
+        async fn test_beta_build() {
+            // Gate test to only run on beta channel
+            let version = rustc_version::version_meta().unwrap();
+            if !matches!(version.channel, rustc_version::Channel::Beta) {
+                return;
             }
-        }
-        // All tasks should end successfully
-        assert!(exit_status.success());
-        commander.join_tasks().await.unwrap();
-    }
+            // Test Corust can run the beta toolchain
+            let backend = init_test_backend();
+            let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+            let mut container = container_factory
+                .create_container(Channel::Beta)
+                .await
+                .unwrap();
 
-    #[tokio::test]
-    async fn test_beta_build() {
-        // Gate test to only run on beta channel
-        let version = rustc_version::version_meta().unwrap();
-        if !matches!(version.channel, rustc_version::Channel::Beta) {
-            return;
-        }
-        // Test Corust can run the beta toolchain
-        let backend = init_test_backend();
-        let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
-        let mut container = container_factory
-            .create_container(Channel::Beta)
-            .await
-            .unwrap();
-
-        let execute_command = ExecuteCommand::new(
-            "fn main() {
+            let execute_command = ExecuteCommand::new(
+                "fn main() {
                 if let Ok(toolchain) = std::env::var(\"RUSTUP_TOOLCHAIN\") {
                     println!(\"{}\", toolchain);
                 }
             }"
-            .to_string(),
-            TargetType::Binary,
-            CargoCommand::Run,
-            OptLevel::Release,
-            Channel::Beta,
-        );
+                .to_string(),
+                TargetType::Binary,
+                CargoCommand::Run,
+                OptLevel::Release,
+                Channel::Beta,
+            );
 
-        let commander = container.execute_request(execute_command).await.unwrap();
+            let commander = container.execute_request(execute_command).await.unwrap();
 
-        let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
-        assert!(exit_code.success());
+            let exit_code = commander.wait().with_timeout().await.unwrap().unwrap();
+            assert!(exit_code.success());
 
-        // Get the last value
-        let (responses, exit_status) = commander.read_all_responses().await.unwrap();
-        // There should be at least one streamed response
-        assert!(responses.len() >= 1);
-        let response = responses.last().unwrap();
-        assert!(matches!(response, ContainerResponse::Execute(_)));
-        match response {
-            ContainerResponse::Execute(response) => {
-                let stdout = String::from_utf8_lossy(&response.stdout);
-                assert_contains!(stdout, "beta");
-                let exit_code = response.exit_code.unwrap();
-                assert_eq!(exit_code, 0);
+            // Get the last value
+            let (responses, exit_status) = commander.read_all_responses().await.unwrap();
+            // There should be at least one streamed response
+            assert!(!responses.is_empty());
+            let response = responses.last().unwrap();
+            assert!(matches!(response, ContainerResponse::Execute(_)));
+            match response {
+                ContainerResponse::Execute(response) => {
+                    let stdout = String::from_utf8_lossy(&response.stdout);
+                    assert_contains!(stdout, "beta");
+                    let exit_code = response.exit_code.unwrap();
+                    assert_eq!(exit_code, 0);
+                }
             }
-            _ => {
-                panic!("Unexpected response type");
+            // All tasks should end successfully
+            assert!(exit_status.success());
+            commander.join_tasks().await.unwrap();
+        }
+    }
+
+    mod standalone {
+        use super::*;
+
+        #[tokio::test]
+        async fn test_rustc_version() {
+            // Issue a standalone command to get the rustc version
+            // Tests on all channels (stable, beta, nightly)
+            let backend = init_test_backend();
+            let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+            for channel in [Channel::Stable, Channel::Beta, Channel::Nightly] {
+                let mut container = container_factory.create_container(channel).await.unwrap();
+                let version = container.rustc_version().await.unwrap().unwrap();
+                // Set lenient assertions since the version may increment over time
+                // Rust version should at least be 1.80.0
+                assert!(version.release.as_str() > "1.80.0");
+                // Rust commit date should be after 2024-01-01
+                assert!(version.commit_date.as_str() > "2024-01-01");
+
+                // Test alternate API to get the rustc version (this can get more than just the rustc version)
+                // note that the container currently stops after 1 command, so we need to create a new container
+                let mut container = container_factory.create_container(channel).await.unwrap();
+                let versions = container.versions().await.unwrap();
+                assert_eq!(versions.rustc.release, version.release);
+                assert_eq!(versions.rustc.commit_hash, version.commit_hash);
+                assert_eq!(versions.rustc.commit_date, version.commit_date);
             }
         }
-        // All tasks should end successfully
-        assert!(exit_status.success());
-        commander.join_tasks().await.unwrap();
+
+        #[tokio::test]
+        async fn test_factory_rustc_version() {
+            // The factory also has an API which queries the [`Versions`] of all channels
+            let backend = init_test_backend();
+            let container_factory = ContainerFactory::new(TEST_MAX_CONCURRENT_CONTAINERS, backend);
+            let versions = container_factory.versions().await.unwrap();
+            assert!(versions.stable.rustc.release.as_str() > "1.80.0");
+            assert!(versions.beta.rustc.release.as_str() > "1.80.0");
+            assert!(versions.nightly.rustc.release.as_str() > "1.80.0");
+        }
     }
 }

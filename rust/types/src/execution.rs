@@ -89,7 +89,9 @@ impl ExecuteCommand {
     }
 }
 
-// Mirrors `std::process::Output`
+/// Mirrors `std::process::Output`
+/// This is used for both [`ExecuteCommand`] and [`crate::standalone::StandaloneCommand`] since they both resolve to
+/// running a program and capturing the output and exit code
 // All executions start with empty stdout and stderr, clearing output from prior runs.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ExecuteResponse {

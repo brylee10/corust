@@ -8,6 +8,7 @@ use corust_sandbox::runner::{
     SpawnChildSnafu, StderrCaptureSnafu, StdoutCaptureSnafu, WaitChildSnafu, WriteCodeSnafu,
     create_runner_io_component,
 };
+use corust_types::standalone::StandaloneCommand;
 use corust_types::{
     ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse, TargetType,
 };
@@ -43,6 +44,7 @@ async fn listen<P: AsRef<Path>>(
     let stdout_handle = runner_io_component.stdout_handle;
 
     let handle_stdin_rx = async {
+        log::debug!("Starting to handle stdin_rx");
         loop {
             if stdin_done {
                 break;
@@ -50,6 +52,7 @@ async fn listen<P: AsRef<Path>>(
             let next_stdin_msg = stdin_rx.recv().await;
             let stdout_tx_inner = stdout_tx.take();
             if let Some(stdout_tx_inner) = stdout_tx_inner {
+                log::debug!("Received message: {:?}", next_stdin_msg);
                 match next_stdin_msg {
                     Some(msg) => {
                         log::debug!("Received message: {:?}", msg);
@@ -63,7 +66,8 @@ async fn listen<P: AsRef<Path>>(
                                 .await?;
                             }
                             ContainerMessage::Standalone(standalone_command) => {
-                                unimplemented!("Standalone command not implemented yet");
+                                handle_standalone_cmd(standalone_command, stdout_tx_inner.clone())
+                                    .await?;
                             }
                         }
                         // The runner can execute one command, then it can receive no more
@@ -138,8 +142,27 @@ async fn handle_execute_cmd<P: AsRef<Path>>(
         cmd,
         project_dir
     );
+    run_command(cmd, stdout_tx).await?;
 
-    let mut child = cmd
+    Ok(())
+}
+
+/// Handles a standalone command by running it and sending the output to the stdout_tx as [`ContainerResponse`]s
+async fn handle_standalone_cmd(
+    command: StandaloneCommand,
+    stdout_tx: Sender<ContainerResponse>,
+) -> Result<()> {
+    let mut cmd: Command = Command::new(&command.command);
+    cmd.args(&command.args);
+
+    run_command(cmd, stdout_tx).await?;
+
+    Ok(())
+}
+
+/// Common utility for running a command and sending the output to the stdout_tx as [`ContainerResponse`]s
+async fn run_command(mut command: Command, stdout_tx: Sender<ContainerResponse>) -> Result<()> {
+    let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -164,7 +187,7 @@ async fn handle_execute_cmd<P: AsRef<Path>>(
             loop {
                 match reader.read(&mut buffer).await.context(ReadStdoutSnafu)? {
                     0 => {
-                        log::info!("Child stdout has closed");
+                        log::debug!("Child stdout has closed");
                         break;
                     }
                     n => {
@@ -191,7 +214,7 @@ async fn handle_execute_cmd<P: AsRef<Path>>(
             loop {
                 match reader.read(&mut buffer).await.context(ReadStdoutSnafu)? {
                     0 => {
-                        log::info!("Child stderr has closed");
+                        log::debug!("Child stderr has closed");
                         break;
                     }
                     n => {
@@ -236,6 +259,7 @@ async fn handle_execute_cmd<P: AsRef<Path>>(
         }
     }
     log::debug!("Execute command finished handling");
+
     Ok(())
 }
 
@@ -255,7 +279,6 @@ async fn main() -> Result<()> {
     let (stdout_tx, stdout_rx) = mpsc::channel(IO_COMPONENT_CHANNEL_SIZE);
     let (stdin_tx, stdin_rx) = mpsc::channel(IO_COMPONENT_CHANNEL_SIZE);
     let runner_io_component = create_runner_io_component(stdin_tx, stdout_rx)?;
-
     let res = listen(project_dir, runner_io_component, stdin_rx, stdout_tx).await;
     match res {
         Ok(()) => {

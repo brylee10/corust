@@ -75,6 +75,7 @@ import {
 } from "../store/slices/codeSelectorSlice.tsx";
 import { UserStateDefined } from "../store/slices/userSlice.tsx";
 import { setOutputTooLargeOpen } from "../store/slices/runStatusSlice.tsx";
+import { Versions, getVersions } from "../api/versions.ts";
 
 // Interfaces/Type definitions
 
@@ -211,6 +212,7 @@ interface Snapshot {
   codeOutputState?: CodeOutputState;
 }
 
+// Focused selection when the user clicks into the code editor
 // Text selection range (start <= end)
 // Either `from === anchor && to === head` or `from === head && to === anchor`
 interface SelectionFocused {
@@ -222,7 +224,7 @@ interface SelectionFocused {
   head: number;
 }
 
-// Fields `undefined` when user cursor is not focused on the text box
+// Fields `undefined` when user cursor is not focused on the code editor
 interface SelectionUnfocused {
   from: undefined;
   to: undefined;
@@ -319,9 +321,10 @@ function MainPage({ currUser }: MainPageProps) {
   const cargoCommandRef = useRef(cargoCommand);
   const optLevelRef = useRef(optLevel);
   const channelRef = useRef(channel);
-  const [stableVersion, setStableVersion] = useState<string>("1.82.0");
-  const [betaVersion, setBetaVersion] = useState<string>("1.82.0");
-  const [nightlyVersion, setNightlyVersion] = useState<string>("1.82.0");
+  // Rust Versions
+  const [stableVersion, setStableVersion] = useState<string>("");
+  const [betaVersion, setBetaVersion] = useState<string>("");
+  const [nightlyVersion, setNightlyVersion] = useState<string>("");
 
   const [userArr, setUserArr] = useState<UserInner[]>([]);
   const [wsOpen, setWsOpen] = useState<boolean>(true);
@@ -344,6 +347,23 @@ function MainPage({ currUser }: MainPageProps) {
       maxDocSizePerMinute
     );
   }, [currUser.userId]);
+
+  useEffect(() => {
+    const fetchVersions = async () => {
+      const versions: Versions = await getVersions();
+      const versionStable = versions.stable.rustc;
+      const versionBeta = versions.beta.rustc;
+      const versionNightly = versions.nightly.rustc;
+      setStableVersion(versionStable.release);
+      setBetaVersion(
+        `${versionBeta.release} (${versionBeta.commit_date} ${versionBeta.commit_hash})`
+      );
+      setNightlyVersion(
+        `${versionNightly.release} (${versionNightly.commit_date} ${versionNightly.commit_hash})`
+      );
+    };
+    fetchVersions();
+  }, []);
 
   // Event listeners capture static state, so we need to use refs for indirection to the latest state
   const cargoOutputRef = useRef(runOutput);
@@ -404,6 +424,7 @@ function MainPage({ currUser }: MainPageProps) {
         };
       }
     );
+    console.log("DEBUG: New collab selections: ", newCollabSelections);
     setCollabSelections(newCollabSelections);
   }, []);
 
@@ -570,7 +591,10 @@ function MainPage({ currUser }: MainPageProps) {
               try {
                 const clientResponse: ClientResponse | undefined =
                   clientRef.current.handle_server_message(serverMessage);
-                console.debug("Received client response: ", clientResponse);
+                console.debug(
+                  "DEBUG: Received client response: ",
+                  clientResponse
+                );
 
                 // Always update code container. This should not change the code container if the update is an ack to a local operation.
                 updateCollabSelections(clientRef.current);
@@ -867,7 +891,14 @@ function MainPage({ currUser }: MainPageProps) {
 
   const handleEditorChange = useCallback(
     (viewUpdate: ViewUpdate) => {
-      console.log("View update: ", viewUpdate);
+      console.log(
+        "DEBUG: View update: ",
+        viewUpdate,
+        "Doc changed: ",
+        viewUpdate.docChanged,
+        "Selection Set: ",
+        viewUpdate.selectionSet
+      );
       // Handle cursor updates and doc updates
       if (viewUpdate.selectionSet || viewUpdate.docChanged) {
         // Log transactions for view update
@@ -982,6 +1013,7 @@ function MainPage({ currUser }: MainPageProps) {
         }
 
         // Local update updates cursor positions and code container
+        console.log("DEBUG: EDITOR CHANGE");
         updateCollabSelections(clientRef.current);
         setCodeContainerText({ code: editorText });
       }

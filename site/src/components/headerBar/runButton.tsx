@@ -187,11 +187,7 @@ function RunButton({
           >
             {cargoCommand}
           </Typography>
-          <Typography
-            variant="subtitle2"
-            color="text.secondary"
-            sx={commonTypographyStyle}
-          >
+          <Typography color="text.secondary" sx={commonTypographyStyle}>
             {description}
           </Typography>
         </Button>

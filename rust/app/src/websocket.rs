@@ -322,7 +322,7 @@ async fn handle_text_message(
             // Broadcast the message to other clients
             if let Err(e) = bcast_tx.send(msg) {
                 // Not an error, just means all receiver handles have been closed
-                log::info!("All receiver handles have been closed. {e:?}");
+                log::debug!("All receiver handles have been closed. {e:?}");
                 // Handle error (e.g., all receiver handles have been closed)
                 return Err(e)?;
             }
@@ -386,7 +386,7 @@ async fn handle_close_message(
     user_id: UserId,
     session_id: SessionId,
 ) -> Result<(), WebSocketError> {
-    log::info!(
+    log::debug!(
         "Received graceful close message from client {user_id} in session ID {session_id}, removing user"
     );
     match server.write().await.mark_user_inactive(user_id) {
@@ -643,34 +643,6 @@ async fn send_snapshot(
 }
 
 pub fn websocket_route(
-    session_map: SharedSessionMap,
-    container_factory: SharedContainerFactory,
-    db_path: PathBuf,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path("websocket")
-        .and(warp::path::param())
-        .and(warp::path::param())
-        .and(warp::ws())
-        .map(
-            move |session_id: String, user_id: UserId, ws: warp::ws::Ws| {
-                let session_map = Arc::clone(&session_map);
-                let container_factory = Arc::clone(&container_factory);
-                let db_path = db_path.clone();
-                ws.on_upgrade(move |ws| {
-                    handle_websocket(
-                        ws,
-                        session_map,
-                        session_id,
-                        user_id,
-                        container_factory,
-                        db_path,
-                    )
-                })
-            },
-        )
-}
-
-pub async fn axum_websocket_route(
     session_map: SharedSessionMap,
     container_factory: SharedContainerFactory,
     db_path: PathBuf,

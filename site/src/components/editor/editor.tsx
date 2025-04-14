@@ -284,8 +284,8 @@ function Editor({
     [theme, isDarkMode]
   );
 
-  const extraCursorsPlugin = useMemo(() => {
-    const computeCursorDecorations = (
+  const computeCursorDecorations = useCallback(
+    (
       view: EditorView,
       userArr: UserInner[],
       collabSelections: UserSelectionRange[]
@@ -385,8 +385,12 @@ function Editor({
       const combinedRanges = [...uniqueAnchors, ...highlightRanges];
       combinedRanges.sort((a, b) => a.from - b.from);
       return combinedRanges;
-    };
+    },
+    [cursorDecoration, textHighlightDecoration, isSelectionFocused]
+  );
 
+  const extraCursorsPlugin = useMemo(() => {
+    console.log("DEBUG: Running extra cursors plugin");
     return ViewPlugin.fromClass(
       class {
         decorations: DecorationSet;
@@ -414,20 +418,14 @@ function Editor({
             userArr,
             collabSelections
           );
-          this.decorations = Decoration.set(combinedRanges);
+          //   this.decorations = Decoration.set(combinedRanges);
         }
       },
       {
         decorations: (v) => v.decorations,
       }
     );
-  }, [
-    collabSelections,
-    userArr,
-    isSelectionFocused,
-    cursorDecoration,
-    textHighlightDecoration,
-  ]);
+  }, [collabSelections, userArr, computeCursorDecorations]);
 
   const renderCodeSelectorButtons = useCallback(() => {
     return (

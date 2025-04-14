@@ -17,11 +17,11 @@ const element = document.getElementById("root") as HTMLElement;
 
 const root = ReactDOM.createRoot(element);
 root.render(
-  <React.StrictMode>
-    <Provider store={store}>
-      <App />
-    </Provider>
-  </React.StrictMode>
+  //   <React.StrictMode>
+  <Provider store={store}>
+    <App />
+  </Provider>
+  //   </React.StrictMode>
 );
 
 // If you want to start measuring performance in your app, pass a function

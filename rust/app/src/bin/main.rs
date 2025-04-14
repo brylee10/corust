@@ -4,6 +4,8 @@ use std::sync::Arc;
 
 use ansi_term::Color;
 use corust_app::db::{CompilationTable, DocumentTable, Table, UserTable};
+use corust_app::errors::{favicon_route, handle_rejection};
+use corust_app::execute::metadata::metadata_routes;
 use corust_app::sandbox_metadata::SandboxMetadata;
 use env_logger::Builder;
 use log::Level;
@@ -49,7 +51,7 @@ async fn main() {
         .init();
 
     log::info!("Starting Rust server! 🚀");
-    let _sandbox_metadata = Arc::new(SandboxMetadata::default());
+    let sandbox_metadata = Arc::new(SandboxMetadata::default());
     let session_map: SharedSessionMap = Arc::new(SessionMap::new());
     let container_factory = Arc::new(ContainerFactory::new(
         MAX_CONCURRENT_CONTAINERS,
@@ -79,6 +81,11 @@ async fn main() {
     );
     let user_join_route = user_join_route(Arc::clone(&session_map), db_path);
     let root_page_route = root_page();
+    let versions_route = metadata_routes(
+        Arc::clone(&sandbox_metadata),
+        Arc::clone(&container_factory),
+    );
+    let favicon_route = favicon_route();
 
     let cors_origin = std::env::var("FRONT_END_URI")
         .unwrap_or_else(|e| panic!("FRONT_END_URI must be set, {}", e));
@@ -92,7 +99,10 @@ async fn main() {
     let routes = websocket_route
         .or(user_join_route)
         .or(root_page_route)
-        .with(cors);
+        .or(versions_route)
+        .or(favicon_route)
+        .with(cors)
+        .recover(handle_rejection);
 
     let addr = std::env::var("WS_SERVER_URI")
         .unwrap_or_else(|e| panic!("WS_SERVER_URI must be set, {}", e));

@@ -9,12 +9,9 @@ use std::{
 use corust_components::{
     RunConfig, RunConfigAction, RunConfigExec, RunStateUpdate, RunStatus, ServerMessage,
 };
-use corust_sandbox::container::{
-    Commander, CommanderError, ContainerError, ContainerFactory, DockerBackend,
-};
+use corust_sandbox::container::{CommanderError, ContainerError, ContainerFactory, DockerBackend};
 use corust_types::{
-    Channel, ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse, RunnerOutput,
-    standalone::{StandaloneCommand, StandaloneResponse},
+    ContainerMessage, ContainerResponse, ExecuteCommand, ExecuteResponse, RunnerOutput,
 };
 use fnv::FnvHashMap;
 use futures_util::SinkExt;
@@ -83,10 +80,8 @@ impl ConcurrentRunChecker {
 
 #[derive(Debug, PartialEq, Eq, Hash, EnumIter, EnumString, Display, Clone, Copy)]
 pub enum RunType {
-    /// Runs a cargo command (special case of standalone command)
+    /// Runs a command line program, currently rustc or cargo
     Execute,
-    /// Runs a raw command interpreted as an command line program with arguments
-    Standalone,
     // Future: Miri, WASM, etc
 }
 
@@ -94,7 +89,7 @@ impl From<&ContainerMessage> for RunType {
     fn from(container_msg: &ContainerMessage) -> Self {
         match container_msg {
             ContainerMessage::Execute { .. } => RunType::Execute,
-            ContainerMessage::Standalone { .. } => RunType::Standalone,
+            ContainerMessage::Standalone { .. } => RunType::Execute,
         }
     }
 }
@@ -103,7 +98,6 @@ impl From<&ContainerResponse> for RunType {
     fn from(container_response: &ContainerResponse) -> Self {
         match container_response {
             ContainerResponse::Execute { .. } => RunType::Execute,
-            ContainerResponse::Standalone { .. } => RunType::Standalone,
         }
     }
 }
@@ -123,22 +117,6 @@ pub(crate) fn container_response_to_runner_output(
 
             RunnerOutput {
                 run_type: RunType::Execute.to_string(),
-                stdout,
-                stderr,
-                exit_code: *exit_code,
-            }
-        }
-        ContainerResponse::Standalone(StandaloneResponse {
-            stdout,
-            stderr,
-            exit_code,
-            ..
-        }) => {
-            let stdout = String::from_utf8_lossy(stdout).to_string();
-            let stderr = String::from_utf8_lossy(stderr).to_string();
-
-            RunnerOutput {
-                run_type: RunType::Standalone.to_string(),
                 stdout,
                 stderr,
                 exit_code: *exit_code,
