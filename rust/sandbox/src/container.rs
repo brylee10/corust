@@ -2,6 +2,7 @@
 //! Inspiration taken from Rust Playground `coordinator.rs`.
 
 use std::{
+    env,
     marker::PhantomData,
     process::{ExitStatus, Stdio},
     sync::Arc,
@@ -175,6 +176,8 @@ impl DockerBackend {
 
 impl Backend for DockerBackend {
     fn prepare_command(&self, channel: Channel) -> Command {
+        let docker_log_level = env::var("DOCKER_LOG_LEVEL").unwrap_or("info".to_string());
+
         let mut cmd = docker_utils::sandboxed_docker_command();
         let container_name = docker_utils::container_name();
         let image_name = format!("rust-{}", channel);
@@ -186,7 +189,7 @@ impl Backend for DockerBackend {
             .arg(&container_name)
             .arg("--rm")
             .arg(image_name);
-        cmd.arg("runner").arg("/corust").arg("debug");
+        cmd.arg("runner").arg("/corust").arg(&docker_log_level);
         cmd
     }
 }
@@ -350,7 +353,7 @@ impl<B: Backend> Container<B> {
     /// May retrieve more versions in the future, tools like miri, fmt, clippy etc
     pub(crate) async fn versions(&mut self) -> Result<ChannelVersions, VersionsError> {
         let rustc_version = self.rustc_version().await?;
-        let rustc_version = rustc_version.ok_or(VersionsError::RustcVersionMissing)?;
+        let rustc_version: Version = rustc_version.ok_or(VersionsError::RustcVersionMissing)?;
         Ok(ChannelVersions {
             rustc: rustc_version,
         })

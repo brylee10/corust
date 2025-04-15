@@ -255,36 +255,6 @@ pub(crate) async fn run_code(
     Ok(())
 }
 
-// /// Runs a raw command interpreted as an command line program with arguments
-// /// Currently only used to run `rustc --version` to check the rustc version
-// pub(crate) async fn run_command(
-//     standalone_command: StandaloneCommand,
-//     container_factory: SharedContainerFactory,
-//     channel: Channel,
-// ) -> Result<Option<ContainerResponse>, RunCodeError> {
-//     let container = container_factory.create_container(channel).await?;
-//     // Shared factory no longer needed
-//     std::mem::drop(container_factory);
-
-//     let container_msg = ContainerMessage::Standalone(standalone_command);
-//     container.execute_request(container_msg).await?;
-
-//     // Read from child stdout until it closes. This streams the child stdout, but `run_command` does not necessarily need to read
-//     // results in a streaming fashion. Typically, this function runs short lived commands (like rustc --version) instead of long running
-//     // compilations / programs
-//     let mut final_response = None;
-//     while let Some(container_response) = child_io.child_stdout_rx.recv().await {
-//         log::debug!("App runner received ContainerResponse");
-//         log::trace!("Container response: {:?}", container_response);
-//         final_response = Some(container_response);
-//     }
-
-//     // Waiting for child should be fast since the stdout closing indicates the child is finished running
-//     let exit_code = child.wait().await.unwrap();
-//     log::debug!("Runner exited with code {:?}", exit_code);
-//     Ok(final_response)
-// }
-
 // Helpers for sending ws notifications
 pub(crate) async fn ws_notify_concurrent_code_error(
     shared_ws_tx: SharedWsSender,

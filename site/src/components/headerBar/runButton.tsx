@@ -4,8 +4,8 @@ import { RunStatus, RunState } from "../editor/runOutputDisplay.tsx";
 import {
   commonButtonStyle,
   commonTypographyStyle,
-  StyledPopover,
 } from "./runConfigButtons.tsx";
+import StyledPopover from "../ui/StyledPopover";
 
 import {
   Button,

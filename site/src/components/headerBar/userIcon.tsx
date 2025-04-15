@@ -23,19 +23,16 @@ function UserIcon({ name, color, isSelf }: UserIconProps) {
     const adjustedColor = isDarkMode ? darkRgb : color;
     return {
       collaborator: {
-        width: 35,
+        width: 43,
         borderRadius: "50%",
-        height: 35,
+        height: 43,
         marginRight: 1,
         backgroundColor: adjustedColor,
         // Centers text vertically and horizontally
-        lineHeight: "35px",
+        lineHeight: "43px",
         textAlign: "center" as const, // don't widen to a string
         fontWeight: "bold",
         color: "#F5F5F5", // whitesmoke
-        borderWidth: 4,
-        borderColor: adjustedColor,
-        borderStyle: "solid",
       },
       self: {
         width: 35,
@@ -48,9 +45,7 @@ function UserIcon({ name, color, isSelf }: UserIconProps) {
         textAlign: "center" as const, // don't widen to a string
         fontWeight: "bold",
         color: adjustedColor,
-        borderWidth: 4,
-        borderColor: adjustedColor,
-        borderStyle: "solid",
+        border: `4px solid ${adjustedColor}`,
       },
     };
   }, [isDarkMode, color]);
