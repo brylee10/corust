@@ -1,4 +1,10 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import "../../mainPage.css"; // Ensure to import the CSS file
 import CodeMirror, {
   ViewUpdate,
@@ -12,7 +18,7 @@ import CodeMirror, {
 } from "@uiw/react-codemirror";
 import { closeBrackets } from "@codemirror/autocomplete";
 import { rust, rustLanguage } from "@codemirror/lang-rust";
-import { UserInner } from "corust-components/corust_components.js";
+import { Client, UserInner } from "corust-components/corust_components.js";
 import {
   SelectionFocused,
   SelectionRange,
@@ -100,14 +106,16 @@ interface EditorProps {
   setView: (view: EditorView) => void;
   handleEditorChange: (viewUpdate: ViewUpdate) => void;
   userArr: UserInner[];
-  collabSelections: UserSelectionRange[];
+  client: Client;
+  getCollabSelections: (client: Client) => UserSelectionRange[];
 }
 
 function Editor({
   setView,
   handleEditorChange,
   userArr,
-  collabSelections,
+  client,
+  getCollabSelections,
 }: EditorProps) {
   const theme = useTheme();
   const dispatch = useDispatch();
@@ -124,6 +132,11 @@ function Editor({
     (state: RootState) => state.displaySelector.dark
   );
   const [openPrevCodeWarning, setOpenPrevCodeWarning] = useState(false);
+  const userArrRef = useRef(userArr);
+
+  useEffect(() => {
+    userArrRef.current = userArr;
+  }, [userArr]);
 
   const liveEditorOptions: BasicSetupOptions = useMemo(
     () => ({
@@ -193,13 +206,11 @@ function Editor({
 
             // Add event listeners for hover actions
             cursor.addEventListener("mouseenter", () => {
-              console.debug("Hovering the cursor");
               tooltip.style.visibility = "visible";
               tooltip.style.opacity = "1";
             });
 
             cursor.addEventListener("mouseleave", () => {
-              console.debug("Mouseout the cursor");
               tooltip.style.visibility = "hidden";
               tooltip.style.opacity = "0";
             });
@@ -389,8 +400,21 @@ function Editor({
     [cursorDecoration, textHighlightDecoration, isSelectionFocused]
   );
 
+  // Used as alternative to `onChange` prop, which is fired *after* the view updates.
+  // This would cause lag when a user key stroke is processed before the cursor decorations are updated.
+  // This plugin is fired *before* the view updates, so client state necessary for visuals
+  // such as the cursor decorations are updated at the same time a user key stroke is processed
+  const handleEditorChangePlugin = useMemo(() => {
+    return ViewPlugin.fromClass(
+      class {
+        update(view: ViewUpdate) {
+          handleEditorChange(view);
+        }
+      }
+    );
+  }, [handleEditorChange]);
+
   const extraCursorsPlugin = useMemo(() => {
-    console.log("DEBUG: Running extra cursors plugin");
     return ViewPlugin.fromClass(
       class {
         decorations: DecorationSet;
@@ -398,8 +422,8 @@ function Editor({
         constructor(view: EditorView) {
           const combinedRanges = computeCursorDecorations(
             view,
-            userArr,
-            collabSelections
+            userArrRef.current,
+            getCollabSelections(client)
           );
           this.decorations = Decoration.set(combinedRanges);
         }
@@ -412,20 +436,21 @@ function Editor({
         // set of `collabSelections` is present until the client quickly updates the `collabSelections`.
         // This is impercetible to the user but would otherwise cause out of bounds in the editor.
         update(view: ViewUpdate) {
+          const collabSelections = getCollabSelections(client);
           const editorView = view.view;
           const combinedRanges = computeCursorDecorations(
             editorView,
-            userArr,
+            userArrRef.current,
             collabSelections
           );
-          //   this.decorations = Decoration.set(combinedRanges);
+          this.decorations = Decoration.set(combinedRanges);
         }
       },
       {
         decorations: (v) => v.decorations,
       }
     );
-  }, [collabSelections, userArr, computeCursorDecorations]);
+  }, [getCollabSelections, client, computeCursorDecorations]);
 
   const renderCodeSelectorButtons = useCallback(() => {
     return (
@@ -489,13 +514,14 @@ function Editor({
         id="live-editor"
         height="100%"
         extensions={[
+          handleEditorChangePlugin,
           rust(),
           extraCursorsPlugin,
           rustTheme,
           closeBrackets(),
           rustCloseBrackets,
         ]}
-        onUpdate={handleEditorChange}
+        // onUpdate={handleEditorChange}
         onCreateEditor={(view, state) => {
           setView(view);
         }}
@@ -547,7 +573,6 @@ function Editor({
     rustTheme,
     lastExecutedCode,
     readOnlyTheme,
-    handleEditorChange,
     liveEditorOptions,
     readOnlyEditorOptions,
     rustCloseBrackets,

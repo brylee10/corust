@@ -12,12 +12,15 @@ import { useSelector } from "react-redux";
 import { RootState } from "../../store/store";
 import WindowSizeListener from "../windowSize";
 import { styled } from "@mui/material";
+import { Client } from "corust-components";
+import { UserSelectionRange } from "../mainPage";
 
 interface EditorContainerProps {
   setView: (view: EditorView) => void;
   handleEditorChange: (viewUpdate: ViewUpdate) => void;
   userArr: any[];
-  collabSelections: any;
+  client: Client;
+  getCollabSelections: (client: Client) => UserSelectionRange[];
   showCargoOutput: boolean;
   cargoOutputOpen: boolean;
   setCargoOutputOpen: (open: boolean) => void;
@@ -55,7 +58,8 @@ function EditorContainer({
   setView,
   handleEditorChange,
   userArr,
-  collabSelections,
+  client,
+  getCollabSelections,
   showCargoOutput,
   cargoOutputOpen,
   setCargoOutputOpen,
@@ -122,14 +126,16 @@ function EditorContainer({
             setView={setView}
             handleEditorChange={handleEditorChange}
             userArr={userArr}
-            collabSelections={collabSelections}
+            client={client}
+            getCollabSelections={getCollabSelections}
           />
         </Panel>
         {renderCargoOutput()}
       </PanelGroup>
     );
   }, [
-    collabSelections,
+    client,
+    getCollabSelections,
     handleEditorChange,
     renderCargoOutput,
     userArr,

@@ -94,7 +94,7 @@ function parseRgbString(rgbString: string): RGBColor | null {
   const match = rgbString.match(rgbRegex);
   if (!match) {
     // Return null if the string does not match the expected format
-    console.debug("Invalid RGB string: ", rgbString);
+    console.error("Invalid RGB string: ", rgbString);
     return null;
   }
 
@@ -105,7 +105,7 @@ function parseRgbString(rgbString: string): RGBColor | null {
   // Ensure the values are within the valid range (0-255)
   if (r < 0 || r > 255 || g < 0 || g > 255 || b < 0 || b > 255) {
     // Return null for invalid values
-    console.debug("Invalid RGB values: ", r, g, b);
+    console.error("Invalid RGB values: ", r, g, b);
     return null;
   }
 
@@ -132,7 +132,7 @@ function rgbString(rgb: RGBColor): string {
 function darkenRgb(rgb: string): string | null {
   const parsedRgb = parseRgbString(rgb);
   if (!parsedRgb) {
-    console.debug("Invalid RGB string: ", rgb);
+    console.error("Invalid RGB string: ", rgb);
     return null;
   }
   const hsl = rgbToHsl(parsedRgb);

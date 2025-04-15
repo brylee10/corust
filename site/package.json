@@ -53,20 +53,9 @@
   },
   "devDependencies": {
     "@types/lodash": "^4.17.0",
-    "@types/react": "^19.1.0",
+    "@types/react": "^18.3.3",
     "@wasm-tool/wasm-pack-plugin": "^1.0.1",
-    "ajv": "^8.12.0",
-    "nth-check": "^2.1.1",
-    "postcss": "^8.4.35",
     "react-app-rewired": "^2.2.1",
-    "typescript": "^5.8.3"
-  },
-  "resolutions": {
-    "nth-check": "2.1.1",
-    "postcss": "8.4.31",
-    "svgo": "2.8.0",
-    "resolve-url-loader": "5.0.0",
-    "css-select": "4.3.0",
-    "ajv": "8.12.0"
+    "typescript": "^4.9.5"
   }
 }

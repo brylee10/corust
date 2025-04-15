@@ -15,10 +15,7 @@ import { BouncingDotsLoader } from "./bouncingDotsLoader";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../../store/store";
-import {
-  setOutputTooLargeClose,
-  setOutputTooLargeOpen,
-} from "../../store/slices/runStatusSlice";
+import { setOutputTooLargeClose } from "../../store/slices/runStatusSlice";
 
 const AUTO_HIDE_DURATION_MS: number = 6000;
 // Maximum bytes that stdout or stderr can be before child process is killed
@@ -165,7 +162,6 @@ function RunOutputDisplay({
 
   useEffect(
     function runStatusUpdateState() {
-      console.debug!("Received run status message", runStatus);
       if (runStatus !== null) {
         setShowConcurrentCompError(runStatus.concurrentCompilation);
         setShowRunningIcon(runStatus.runState === RunState.Running);
@@ -176,7 +172,6 @@ function RunOutputDisplay({
 
   useEffect(() => {
     if (runOutput) {
-      console.debug("Run Output: " + JSON.stringify(runOutput));
       setStderr(runOutput.stderr);
       setStdout(runOutput.stdout);
     }

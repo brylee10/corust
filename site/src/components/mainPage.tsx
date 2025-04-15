@@ -274,7 +274,7 @@ const executeCommandToObj = (msg: ExecuteCommand): WsRustExecuteCommand => {
 // https://github.com/rust-lang/rust-playground/blob/main/ui/frontend/selectors/index.ts
 const HAS_MAIN_FUNCTION_RE = new RegExp(
   [
-    /^([^\n\r\/]*;)?/,
+    /^([^\n\r/]*;)?/,
     /\s*(pub\s+)?\s*(const\s+)?\s*(async\s+)?\s*/,
     /fn\s+main\s*\(\s*(\/\*.*\*\/)?\s*\)/,
   ]
@@ -305,9 +305,6 @@ function MainPage({ currUser }: MainPageProps) {
       code: "",
     }
   );
-  const [collabSelections, setCollabSelections] = useState<
-    UserSelectionRange[]
-  >([]);
 
   // `cargo` configuraiton
   const [targetType, setTargetType] = useState<TargetType>(TargetType.Library);
@@ -375,7 +372,6 @@ function MainPage({ currUser }: MainPageProps) {
   const dispatchTransaction = useCallback(
     (textUpdates: TextUpdate[]) => {
       // Convert text updates into a transaction spec to update the editor
-      console.debug("view at dispatch transaction: ", view);
       if (view) {
         const changeSpec: ChangeSpec = textUpdates.map((textUpdate) => {
           return {
@@ -406,7 +402,7 @@ function MainPage({ currUser }: MainPageProps) {
     [remoteAnnotationType, view]
   );
 
-  const updateCollabSelections = useCallback((client: Client) => {
+  const getCollabSelections = useCallback((client: Client) => {
     const cursorPositions: UserCursorPos[] = client.cursor_pos_vec();
     const newCollabSelections: UserSelectionRange[] = cursorPositions.map(
       (userCursorPos) => {
@@ -424,8 +420,7 @@ function MainPage({ currUser }: MainPageProps) {
         };
       }
     );
-    console.log("DEBUG: New collab selections: ", newCollabSelections);
-    setCollabSelections(newCollabSelections);
+    return newCollabSelections;
   }, []);
 
   // Utility to update the RunStatus object based on the RunStateUpdate. Similar to a reducer.
@@ -597,7 +592,6 @@ function MainPage({ currUser }: MainPageProps) {
                 );
 
                 // Always update code container. This should not change the code container if the update is an ack to a local operation.
-                updateCollabSelections(clientRef.current);
                 setCodeContainerText({ code: clientRef.current.document() });
 
                 if (serverMsgType === ServerMessageType.Snapshot) {
@@ -807,7 +801,7 @@ function MainPage({ currUser }: MainPageProps) {
     filteredEnqueueSnackbar,
     handleSnapshot,
     params.sessionId,
-    updateCollabSelections,
+    getCollabSelections,
     updateRunStatus,
     view,
   ]);
@@ -891,14 +885,6 @@ function MainPage({ currUser }: MainPageProps) {
 
   const handleEditorChange = useCallback(
     (viewUpdate: ViewUpdate) => {
-      console.log(
-        "DEBUG: View update: ",
-        viewUpdate,
-        "Doc changed: ",
-        viewUpdate.docChanged,
-        "Selection Set: ",
-        viewUpdate.selectionSet
-      );
       // Handle cursor updates and doc updates
       if (viewUpdate.selectionSet || viewUpdate.docChanged) {
         // Log transactions for view update
@@ -919,19 +905,6 @@ function MainPage({ currUser }: MainPageProps) {
         );
 
         const editorText = viewUpdate.state.doc.toString();
-        console.debug(
-          "Cursor position: ",
-          cursorPos.to_string(),
-          ", Client cursor position: ",
-          client.cursor_pos()?.to_string()
-        );
-        console.debug(
-          "Cursors equal: ",
-          client.cursor_pos()?.equals(cursorPos)
-        );
-        console.debug("Editor text: " + editorText);
-        console.debug("Client doc: " + client.document());
-        console.debug("Documents equal: ", client.document() === editorText);
 
         // Important: Check if the change is local or remote.
         const isRemoteUpdate = (viewUpdate: ViewUpdate): boolean => {
@@ -960,6 +933,7 @@ function MainPage({ currUser }: MainPageProps) {
         const prevDocLen = viewUpdate.changes.desc.length;
         let docUpdateStringified = "";
         try {
+          // Client updates document and cursor state based on local text update from user
           docUpdateStringified = client.update_document_wasm(
             editorText,
             prevDocLen,
@@ -985,7 +959,6 @@ function MainPage({ currUser }: MainPageProps) {
           "Client doc should match user input"
         );
         const shouldSendUpdate = client.prepare_send_local_update();
-        console.debug("Should send update: ", shouldSendUpdate);
         console.debug(
           "Bridge length (should converge to 0): ",
           client.buffer_len()
@@ -1003,7 +976,6 @@ function MainPage({ currUser }: MainPageProps) {
             },
             opState: OpState.Unsent,
           };
-          console.debug("Sending doc update: ", docUpdate.inner.docUpdate);
           console.assert(
             docUpdate.opState === OpState.Unsent,
             "The doc update sent should not have been previously sent"
@@ -1013,12 +985,10 @@ function MainPage({ currUser }: MainPageProps) {
         }
 
         // Local update updates cursor positions and code container
-        console.log("DEBUG: EDITOR CHANGE");
-        updateCollabSelections(clientRef.current);
         setCodeContainerText({ code: editorText });
       }
     },
-    [wsSend, updateCollabSelections, client, remoteAnnotationType]
+    [wsSend, client, remoteAnnotationType]
   );
 
   return (
@@ -1049,7 +1019,8 @@ function MainPage({ currUser }: MainPageProps) {
         setView={setView}
         handleEditorChange={handleEditorChange}
         userArr={userArr}
-        collabSelections={collabSelections}
+        client={clientRef.current}
+        getCollabSelections={getCollabSelections}
         showCargoOutput={showCargoOutput}
         cargoOutputOpen={cargoOutputOpen}
         setCargoOutputOpen={setCargoOutputOpen}

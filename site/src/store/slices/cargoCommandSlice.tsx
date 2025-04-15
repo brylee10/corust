@@ -4,7 +4,6 @@
  */
 
 import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import { set } from "lodash";
 
 enum CargoCommand {
   Build = "Build",

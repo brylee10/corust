@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from "react";
+import { useEffect } from "react";
 import MainPage from "../mainPage.tsx";
 import { useParams } from "react-router-dom";
 import { Box } from "@mui/material";

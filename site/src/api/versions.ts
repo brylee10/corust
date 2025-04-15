@@ -24,6 +24,5 @@ export const getVersions = async (): Promise<Versions> => {
     `${process.env.REACT_APP_ENDPOINT_URI}/metadata/versions`
   );
   const data: Versions = await response.json();
-  console.log("Versions: ", data);
   return data;
 };
