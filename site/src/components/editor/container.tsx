@@ -6,14 +6,14 @@
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import Editor from "./editor";
 import { useCallback } from "react";
-import { RunOutputDisplay } from "./runOutputDisplay";
+import { RunOutput, RunOutputDisplay, RunStatus } from "./runOutputDisplay";
 import { EditorView, ViewUpdate } from "@uiw/react-codemirror";
 import { useSelector } from "react-redux";
-import { RootState } from "../../store/store";
+import { RootState } from "@/store/store";
 import WindowSizeListener from "../windowSize";
 import { styled } from "@mui/material";
 import { Client } from "corust-components";
-import { UserSelectionRange } from "../mainPage";
+import { UserSelectionRange } from "@/components/mainPage";
 
 interface EditorContainerProps {
   setView: (view: EditorView) => void;
@@ -24,8 +24,8 @@ interface EditorContainerProps {
   showCargoOutput: boolean;
   cargoOutputOpen: boolean;
   setCargoOutputOpen: (open: boolean) => void;
-  runOutput: any;
-  runStatus: any;
+  runOutput: RunOutput | null;
+  runStatus: RunStatus | null;
 }
 
 interface NarrowScreenProps {

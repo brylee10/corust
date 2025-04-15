@@ -16,10 +16,10 @@ import {
 import LightModeIcon from "@mui/icons-material/LightMode";
 import DarkModeIcon from "@mui/icons-material/DarkMode";
 import PeopleIcon from "@mui/icons-material/People";
-import { UserState } from "../../store/slices/userSlice";
+import { UserState } from "@/store/slices/userSlice";
 import { useDispatch, useSelector } from "react-redux";
-import { RootState } from "../../store/store";
-import { toggleDarkMode } from "../../store/slices/display";
+import { RootState } from "@/store/store";
+import { toggleDarkMode } from "@/store/slices/display";
 
 // Define constants once
 const CustomButton = styled(Button)(({ theme }) => {
@@ -122,7 +122,9 @@ function HeaderBar({
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         open={openCopyNotification}
         autoHideDuration={5000}
-        TransitionComponent={Grow}
+        slots={{
+          transition: Grow,
+        }}
         onClose={() => setOpenCopyNotification(false)}
       >
         <Alert severity="success">Copied Corust Link to Clipboard</Alert>

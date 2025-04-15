@@ -1,11 +1,11 @@
 import React, { useCallback, useMemo, useState } from "react";
 
-import { RunStatus, RunState } from "../editor/runOutputDisplay.tsx";
+import { RunStatus, RunState } from "@/components/editor/runOutputDisplay";
 import {
   commonButtonStyle,
   commonTypographyStyle,
-} from "./runConfigButtons.tsx";
-import StyledPopover from "../ui/StyledPopover";
+} from "@/components/headerBar/runConfigButtons";
+import StyledPopover from "@/components/ui/StyledPopover";
 
 import {
   Button,
@@ -20,15 +20,15 @@ import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import {
   CargoCommand,
   setCargoCommand,
-} from "../../store/slices/cargoCommandSlice.tsx";
+} from "@/store/slices/cargoCommandSlice";
 import { useDispatch, useSelector } from "react-redux";
-import { RootState } from "../../store/store.tsx";
+import { RootState } from "@/store/store";
 import {
   WsClientTextMsg,
   WsClientTextMsgType,
   WsConfigUpdate,
-} from "../mainPage.tsx";
-import { selectUserState } from "../../store/slices/userSlice.tsx";
+} from "@/components/mainPage";
+import { selectUserState } from "@/store/slices/userSlice";
 
 const CustomRunButton = styled(Button)({
   padding: "10px 20px",
@@ -202,7 +202,12 @@ function RunButton({
       cargoCommand.charAt(0).toUpperCase() + cargoCommand.slice(1);
     const enabledButton = (
       <>
-        <ButtonGroup>
+        <ButtonGroup
+          sx={{
+            boxShadow:
+              "rgba(0, 0, 0, 0.2) 0px 3px 1px -2px, rgba(0, 0, 0, 0.14) 0px 2px 2px 0px, rgba(0, 0, 0, 0.12) 0px 1px 5px 0px;",
+          }}
+        >
           <Tooltip title={`${cargoCommandCapitalized} the code`} arrow>
             <CustomRunButton
               variant="contained"

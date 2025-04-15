@@ -1,3 +1,5 @@
+"use client";
+
 import React, {
   useCallback,
   useEffect,
@@ -5,7 +7,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import "../../mainPage.css"; // Ensure to import the CSS file
+import "@/components/mainPage.css"; // Ensure to import the CSS file
 import CodeMirror, {
   ViewUpdate,
   Decoration,
@@ -23,7 +25,7 @@ import {
   SelectionFocused,
   SelectionRange,
   UserSelectionRange,
-} from "../mainPage.tsx";
+} from "@/components/mainPage";
 import {
   Alert,
   Button,
@@ -35,13 +37,13 @@ import {
   useTheme,
 } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
-import { RootState } from "../../store/store.tsx";
+import { RootState } from "@/store/store";
 import {
   SelectedCodeType,
   setLive,
   setLastExecution,
-} from "../../store/slices/codeSelectorSlice.tsx";
-import { darkenRgb } from "../colorUtils.tsx";
+} from "@/store/slices/codeSelectorSlice";
+import { darkenRgb } from "@/components/colorUtils";
 
 interface CodeSelectorProps {
   selected: boolean;
@@ -521,7 +523,7 @@ function Editor({
           closeBrackets(),
           rustCloseBrackets,
         ]}
-        // onUpdate={handleEditorChange}
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         onCreateEditor={(view, state) => {
           setView(view);
         }}
@@ -577,6 +579,7 @@ function Editor({
     readOnlyEditorOptions,
     rustCloseBrackets,
     isDarkMode,
+    handleEditorChangePlugin,
   ]);
 
   return (
@@ -586,13 +589,15 @@ function Editor({
       <Snackbar
         open={openPrevCodeWarning}
         autoHideDuration={10000}
-        TransitionComponent={Grow}
+        slots={{
+          transition: Grow,
+        }}
         onClose={() => setOpenPrevCodeWarning(false)}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert severity="info">
-          No code has been executed before so the "Last Execution" panel is
-          empty. Run some code to see it here.
+          No code has been executed before so the &quot;Last Execution&quot;
+          panel is empty. Run some code to see it here.
         </Alert>
       </Snackbar>
     </Stack>

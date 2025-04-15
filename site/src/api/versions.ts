@@ -21,7 +21,7 @@ interface Version {
 
 export const getVersions = async (): Promise<Versions> => {
   const response = await fetch(
-    `${process.env.REACT_APP_ENDPOINT_URI}/metadata/versions`
+    `${process.env.NEXT_PUBLIC_ENDPOINT_URI}/metadata/versions`
   );
   const data: Versions = await response.json();
   return data;

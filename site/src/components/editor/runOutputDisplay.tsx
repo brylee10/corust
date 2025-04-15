@@ -14,8 +14,8 @@ import React from "react";
 import { BouncingDotsLoader } from "./bouncingDotsLoader";
 import TerminalIcon from "@mui/icons-material/Terminal";
 import { useDispatch, useSelector } from "react-redux";
-import { RootState } from "../../store/store";
-import { setOutputTooLargeClose } from "../../store/slices/runStatusSlice";
+import { RootState } from "@/store/store";
+import { setOutputTooLargeClose } from "@/store/slices/runStatusSlice";
 
 const AUTO_HIDE_DURATION_MS: number = 6000;
 // Maximum bytes that stdout or stderr can be before child process is killed
@@ -104,7 +104,7 @@ const RunnerOutput = styled("div")<{ open: boolean; isNarrowScreen: boolean }>(
 );
 
 const Container = styled("div")<{ open: boolean }>(({ open }) => ({
-  fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+  fontFamily: "var(--font-family-sans)",
   display: "flex",
   flexDirection: "column",
   flex: 1,
@@ -121,7 +121,7 @@ const TitleContainer = styled("div")({
 
 const TitleOpen = styled("div")<{ isNarrowScreen: boolean }>(
   ({ isNarrowScreen }) => ({
-    fontFamily: '"Roboto", "Helvetica", "Arial", sans-serif',
+    fontFamily: "var(--font-family-sans)",
     position: "absolute",
     left: "50%",
     transform: "translateX(-50%)",
@@ -274,7 +274,9 @@ function RunOutputDisplay({
       {open ? renderOpenedOutput() : renderClosedOutput()}
       <Snackbar
         open={showConcurrentCompError}
-        TransitionComponent={Grow}
+        slots={{
+          transition: Grow,
+        }}
         autoHideDuration={AUTO_HIDE_DURATION_MS}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         onClose={() => setShowConcurrentCompError(false)}
@@ -289,7 +291,9 @@ function RunOutputDisplay({
       </Snackbar>
       <Snackbar
         open={showOutputSizeError}
-        TransitionComponent={Grow}
+        slots={{
+          transition: Grow,
+        }}
         autoHideDuration={AUTO_HIDE_DURATION_MS}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
         onClose={() => dispatch(setOutputTooLargeClose())}

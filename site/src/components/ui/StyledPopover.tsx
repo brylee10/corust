@@ -2,7 +2,7 @@ import React, { useState, ReactNode, useEffect } from "react";
 import { Popover, Grow, useTheme } from "@mui/material";
 import { styled } from "@mui/material/styles";
 import { useSelector } from "react-redux";
-import { RootState } from "../../store/store";
+import { RootState } from "@/store/store";
 
 // Styled arrow component that appears above the popover
 const Arrow = styled("div")(({ theme, ...props }) => {

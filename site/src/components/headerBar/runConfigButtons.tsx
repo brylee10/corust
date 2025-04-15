@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useCallback } from "react";
 import {
   Button,
   ButtonGroup,
@@ -6,24 +6,23 @@ import {
   styled,
   Stack,
   Typography,
-  useTheme,
 } from "@mui/material";
 import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
 import {
   RustChannel,
   setChannel,
   setChannelVersion,
-} from "../../store/slices/channelSlice";
-import { OptLevel, setOptLevel } from "../../store/slices/optSlice";
+} from "@/store/slices/channelSlice";
+import { OptLevel, setOptLevel } from "@/store/slices/optSlice";
 import { useDispatch, useSelector } from "react-redux";
-import { RootState } from "../../store/store";
+import { RootState } from "@/store/store";
 import {
   WsClientTextMsg,
   WsClientTextMsgType,
   WsConfigUpdate,
-} from "../mainPage.tsx";
-import { selectUserState } from "../../store/slices/userSlice";
-import StyledPopover from "../ui/StyledPopover";
+} from "@/components/mainPage";
+import { selectUserState } from "@/store/slices/userSlice";
+import StyledPopover from "@/components/ui/StyledPopover";
 
 const ConfigButton = styled(Button)(({ theme }) => ({
   padding: "10px 15px",
@@ -192,7 +191,12 @@ function RunConfigButtons({
 
   return (
     <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-      <ButtonGroup>
+      <ButtonGroup
+        sx={{
+          boxShadow:
+            "rgba(0, 0, 0, 0.2) 0px 3px 1px -2px, rgba(0, 0, 0, 0.14) 0px 2px 2px 0px, rgba(0, 0, 0, 0.12) 0px 1px 5px 0px;",
+        }}
+      >
         <Tooltip title="Optimization Level" arrow>
           <ConfigButton
             variant="contained"

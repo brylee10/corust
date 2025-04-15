@@ -1,14 +1,15 @@
+"use client";
 import { useEffect } from "react";
-import MainPage from "../mainPage.tsx";
-import { useParams } from "react-router-dom";
+import MainPage from "@/components/mainPage";
+import { useParams } from "next/navigation";
 import { Box } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
 import {
   selectUserState,
   setUserState,
   UserStateDefined,
-} from "../../store/slices/userSlice.tsx";
-import { clientJoin } from "../../api/userJoin.ts";
+} from "@/store/slices/userSlice";
+import { clientJoin } from "@/api/userJoin";
 
 function UserJoin() {
   const dispatch = useDispatch();

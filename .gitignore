@@ -32,3 +32,7 @@ site/.env.production.local
 site/npm-debug.log*
 site/yarn-debug.log*
 site/yarn-error.log*
+
+# site CRA version
+site-cra
+site-cra/node_modules

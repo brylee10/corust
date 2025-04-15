@@ -1,0 +1,9 @@
+:root {
+  --border-color: #cea6a0;
+  --border: 1px solid var(--border-color);
+  --font-family-sans: "Roboto", "Helvetica", "Arial";
+}
+
+body {
+  font-family: var(--font-family-sans);
+}

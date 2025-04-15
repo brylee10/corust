@@ -13,9 +13,13 @@ build-wasm:
 deploy: build-wasm link
 	@npm run build
 
-# Start local dev server
+# Run production build
 start: build-wasm link
-	@npm start
+	@npm run start
+
+# Start local dev server
+dev: build-wasm link
+	@npm run dev
 
 # `corust_components` is a local npm package that is linked to `node_modules`, 
 # not installed from npm registry

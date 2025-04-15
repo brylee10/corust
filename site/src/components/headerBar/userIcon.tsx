@@ -1,7 +1,7 @@
 import { Box, Tooltip } from "@mui/material";
 import { useEffect, useMemo, useState } from "react";
-import { darkenRgb } from "../colorUtils";
-import { RootState } from "../../store/store";
+import { darkenRgb } from "@/components/colorUtils";
+import { RootState } from "@/store/store";
 import { useSelector } from "react-redux";
 
 interface UserIconProps {
@@ -33,6 +33,7 @@ function UserIcon({ name, color, isSelf }: UserIconProps) {
         textAlign: "center" as const, // don't widen to a string
         fontWeight: "bold",
         color: "#F5F5F5", // whitesmoke
+        fontFamily: "var(--font-family-sans)",
       },
       self: {
         width: 35,
@@ -46,6 +47,7 @@ function UserIcon({ name, color, isSelf }: UserIconProps) {
         fontWeight: "bold",
         color: adjustedColor,
         border: `4px solid ${adjustedColor}`,
+        fontFamily: "var(--font-family-sans)",
       },
     };
   }, [isDarkMode, color]);

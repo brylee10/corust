@@ -19,16 +19,18 @@ export const clientJoin = async (
     const userId = sessionStorage.getItem("sessionUserId_" + sessionId);
     let fetchUri;
     if (userId) {
-      fetchUri = `${process.env.REACT_APP_ENDPOINT_URI}/join/${sessionId}/${userId}`;
+      fetchUri = `${process.env.NEXT_PUBLIC_ENDPOINT_URI}/join/${sessionId}/${userId}`;
     } else {
-      fetchUri = `${process.env.REACT_APP_ENDPOINT_URI}/join/${sessionId}`;
+      fetchUri = `${process.env.NEXT_PUBLIC_ENDPOINT_URI}/join/${sessionId}`;
     }
 
     const response = await fetch(fetchUri, {
       method: "POST",
       headers: headers,
     });
+    console.log("Fetch URI", fetchUri);
     const text = await response.text();
+    console.log("text", text);
     const userJoinResponse: UserJoinResponse = JSON.parse(
       text,
       (key, value) => {

@@ -1,5 +1,5 @@
 import { UserInner } from "../../../../rust/components/pkg/corust_components";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import UserIcon from "./userIcon";
 import {
   Box,
@@ -11,8 +11,8 @@ import {
   Tooltip,
   useTheme,
 } from "@mui/material";
-import { UserState } from "../../store/slices/userSlice";
-import StyledPopover from "../ui/StyledPopover";
+import { UserState } from "@/store/slices/userSlice";
+import StyledPopover from "@/components/ui/StyledPopover";
 import React from "react";
 
 interface UserIconListProps {

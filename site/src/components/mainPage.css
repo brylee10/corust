@@ -1,0 +1,224 @@
+:root {
+  --border-color: #cea6a0;
+  --border: 1px solid var(--border-color);
+}
+
+.App {
+  display: flex;
+  flex-direction: column;
+  height: 100vh; /* Take up full viewport height */
+  padding: 20px;
+  box-sizing: border-box; /* Include padding in height calculation */
+}
+
+.max-height {
+  height: 100%;
+  display: flex;
+}
+
+.max-height-vert {
+  display: flex;
+  margin-top: 10px;
+}
+
+.runner-output {
+  font-size: 16px;
+  border-radius: 4px;
+  /* A light calm Rust */
+  background: #fefaf9;
+  padding-left: 10px;
+  padding-right: 10px;
+  /* A thin, light gray border */
+  border-width: thin;
+  border-color: var(--border-color);
+  border-style: solid;
+}
+
+.runner-output.open {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  /* Padding from following stderr/stdout outputs*/
+  padding-bottom: 10px;
+  /* Scrolls when output is large */
+  overflow: auto;
+}
+
+/* Hide the output when closed */
+.runner-output.closed {
+  flex: 0;
+  cursor: pointer;
+  margin-top: 12px;
+}
+
+.runner-output.closed.vertical {
+  flex: 0;
+  cursor: pointer;
+  margin-left: 12px;
+}
+
+.runner-output .container {
+  font-family: var(--font-family-sans);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.runner-output .container .title-container {
+  display: flex;
+  flex-direction: row-reverse;
+}
+
+.runner-output .container .title-container-vert {
+  display: flex;
+  flex-direction: row;
+}
+
+.runner-output .container .title-container .title-open {
+  font-family: var(--font-family-sans);
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 8px;
+  color: #c96556;
+  font-weight: 600;
+}
+
+.runner-output .container .title-container-vert .title-open-vert {
+  font-family: var(--font-family-sans);
+  text-align: center;
+  padding: 8px;
+  color: #c96556;
+  font-weight: 600;
+  flex-grow: 1;
+}
+
+.runner-output .container .title-closed {
+  font-family: var(--font-family-sans);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 8px;
+  color: #c96556;
+  font-weight: 600;
+}
+
+.runner-output-body .subtitle {
+  font-family: var(--font-family-sans);
+  color: var(--border-color);
+  display: flex;
+}
+
+.runner-output-body .subtitle::before {
+  flex: 1;
+  margin: auto;
+  border-top: var(--border);
+  content: "";
+  margin-right: 1%;
+}
+
+.runner-output-body .subtitle::after {
+  flex: 1;
+  margin: auto;
+  border-top: var(--border);
+  content: "";
+  margin-left: 1%;
+}
+
+.runner-output-body .content {
+  font-family: "Source Code Pro", monospace; /* Popular code editor fonts */
+  padding-bottom: 8px;
+  white-space: pre-line;
+  overflow: auto;
+}
+
+.runner-output-body {
+  margin-top: 8px;
+}
+
+.header-bar {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+}
+
+/* Space all children */
+.header-left > * {
+  margin-right: 10px;
+}
+
+/* 
+  Dots shift 4 px and fade to 0.1 opacity, offset equally, cycling every 0.6s 
+  Credit to: https://dev.to/kirteshbansal/bouncing-dots-loader-in-react-4jng
+  */
+.bouncing-loader {
+  display: flex;
+}
+
+.bouncing-loader > div {
+  width: 8px;
+  height: 8px;
+  margin: 3px 6px;
+  border-radius: 50%;
+  background-color: #a3a1a1;
+  opacity: 1;
+  animation: bouncing-loader 0.6s infinite alternate;
+}
+
+@keyframes bouncing-loader {
+  to {
+    opacity: 0.1;
+    transform: translateY(-4px);
+  }
+}
+
+.bouncing-loader > div:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.bouncing-loader > div:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.rust-stable-button {
+  background-color: #deb6b0;
+  color: white;
+  font-weight: bold;
+  line-height: 1.25;
+  height: 38px;
+  align-self: center;
+}
+
+.resize-handle-horiz {
+  margin-top: 5px;
+  margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize; /* For vertical resizing */
+  width: 100%;
+  height: 10px;
+}
+
+.resize-handle-horiz::before {
+  content: "⋯";
+  font-size: 14px;
+  color: #888;
+}
+
+.resize-handle-vert {
+  margin-left: 5px;
+  margin-right: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: row-resize; /* For vertical resizing */
+  height: 100%;
+  width: 10px;
+}
+
+.resize-handle-vert::before {
+  content: "⋮";
+  font-size: 14px;
+  color: #888;
+}

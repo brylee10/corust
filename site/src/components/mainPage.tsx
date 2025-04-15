@@ -6,7 +6,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import "../mainPage.css"; // Ensure to import the CSS file
+import "@/components/mainPage.css"; // Ensure to import the CSS file
 import {
   ViewUpdate,
   EditorView,
@@ -27,8 +27,8 @@ import {
   UserCursorPos,
   RemoteDocUpdate,
   Client,
-} from "corust-components/corust_components.js";
-import { useParams } from "react-router-dom";
+} from "corust-components";
+import { useParams } from "next/navigation";
 import {
   Alert,
   Snackbar,
@@ -47,35 +47,35 @@ import {
   RunStatus,
   RunType,
   ServerRunStatus,
-} from "./editor/runOutputDisplay.tsx";
-import HeaderBar from "./headerBar/headerBar.tsx";
-import RunButton from "./headerBar/runButton.tsx";
-import RunConfigButtons from "./headerBar/runConfigButtons.tsx";
+} from "@/components/editor/runOutputDisplay";
+import HeaderBar from "@/components/headerBar/headerBar";
+import RunButton from "@/components/headerBar/runButton";
+import RunConfigButtons from "@/components/headerBar/runConfigButtons";
 import {
   CargoCommand,
   setCargoCommand,
   setLastExecuteCargoCommand,
-} from "../store/slices/cargoCommandSlice.tsx";
+} from "@/store/slices/cargoCommandSlice";
 import { useDispatch, useSelector } from "react-redux";
-import { RootState } from "../store/store.tsx";
-import EditorContainer from "./editor/container.tsx";
+import { RootState } from "@/store/store";
+import EditorContainer from "@/components/editor/container";
 import {
   OptLevel,
   setLastExecuteOptLevel,
   setOptLevel,
-} from "../store/slices/optSlice.tsx";
+} from "@/store/slices/optSlice";
 import {
   RustChannel,
   setChannel,
   setLastExecuteChannel,
-} from "../store/slices/channelSlice.tsx";
+} from "@/store/slices/channelSlice";
 import {
   setExecutingUser,
   setLastExecutionCode,
-} from "../store/slices/codeSelectorSlice.tsx";
-import { UserStateDefined } from "../store/slices/userSlice.tsx";
-import { setOutputTooLargeOpen } from "../store/slices/runStatusSlice.tsx";
-import { Versions, getVersions } from "../api/versions.ts";
+} from "@/store/slices/codeSelectorSlice";
+import { UserStateDefined } from "@/store/slices/userSlice";
+import { setOutputTooLargeOpen } from "@/store/slices/runStatusSlice";
+import { Versions, getVersions } from "@/api/versions";
 
 // Interfaces/Type definitions
 
@@ -203,7 +203,7 @@ interface CodeOutputState {
 interface Snapshot {
   source: number;
   dest: number;
-  document: String;
+  document: string;
   // Opaque Rust struct that does not need to be accessed
   cursorMap: any;
   stateId: number;
@@ -325,7 +325,7 @@ function MainPage({ currUser }: MainPageProps) {
 
   const [userArr, setUserArr] = useState<UserInner[]>([]);
   const [wsOpen, setWsOpen] = useState<boolean>(true);
-  const [wsDisconnectMsg, setWsDisconnectMsg] = useState<String>(
+  const [wsDisconnectMsg, setWsDisconnectMsg] = useState<string>(
     "Disconnected from server. Please refresh the page to rejoin."
   );
   const [remoteAnnotationType] = useState<AnnotationType<boolean>>(
@@ -546,7 +546,7 @@ function MainPage({ currUser }: MainPageProps) {
         " and user ID: ",
         client.user_id()
       );
-      const wsUri = `${process.env.REACT_APP_WEBSOCKET_URI}/websocket/${
+      const wsUri = `${process.env.NEXT_PUBLIC_WEBSOCKET_URI}/websocket/${
         params.sessionId
       }/${client.user_id()}`;
       console.debug("Setting ws as ", wsUri);
@@ -559,6 +559,7 @@ function MainPage({ currUser }: MainPageProps) {
       // Connection opened
       newSocket.addEventListener(
         "open",
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         function (event) {
           console.debug("Connected to WS Server");
           setWsOpen(true);
@@ -767,6 +768,7 @@ function MainPage({ currUser }: MainPageProps) {
       // Connection closed
       newSocket.addEventListener(
         "close",
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
         function (event) {
           console.error("Disconnected from WS Server");
           setWsOpen(false);
@@ -946,6 +948,7 @@ function MainPage({ currUser }: MainPageProps) {
               error
           );
           setWsDisconnectMsg(
+            // eslint-disable-next-line @typescript-eslint/no-unused-vars
             (msg) =>
               String(error) +
               " Disconnected from server. Please refresh the page to rejoin."
@@ -1029,7 +1032,9 @@ function MainPage({ currUser }: MainPageProps) {
       />
       <Snackbar
         open={!wsOpen}
-        TransitionComponent={Grow}
+        slots={{
+          transition: Grow,
+        }}
         anchorOrigin={{ vertical: "bottom", horizontal: "center" }}
       >
         <Alert severity="error">{wsDisconnectMsg}</Alert>

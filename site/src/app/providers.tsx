@@ -1,10 +1,11 @@
+// src/app/providers.tsx
+"use client";
+
 import { createTheme, GlobalStyles, ThemeProvider } from "@mui/material";
-import React, { useEffect, useState } from "react";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
-import { RootState } from "./store/store";
 import { useSelector } from "react-redux";
-import { NewSessionHandler } from "./components/join/newSessionHandler";
-import UserJoin from "./components/join/userJoin";
+import { Provider } from "react-redux";
+import { RootState, store } from "@/store/store";
+import { useState, useEffect } from "react";
 
 const lightTheme = createTheme({
   palette: {
@@ -47,38 +48,36 @@ const darkTheme = createTheme({
   spacing: 8,
 });
 
-function App() {
+export function Providers({ children }: { children: React.ReactNode }) {
+  // This needs to be wrapped in a client component
+  return (
+    <Provider store={store}>
+      <ThemeHandler>{children}</ThemeHandler>
+    </Provider>
+  );
+}
+
+function ThemeHandler({ children }: { children: React.ReactNode }) {
   const isDarkMode = useSelector(
     (state: RootState) => state.displaySelector.dark
   );
 
   const [theme, setTheme] = useState(isDarkMode ? darkTheme : lightTheme);
 
-  useEffect(
-    function updateTheme() {
-      setTheme(isDarkMode ? darkTheme : lightTheme);
-    },
-    [isDarkMode]
-  );
+  useEffect(() => {
+    setTheme(isDarkMode ? darkTheme : lightTheme);
+  }, [isDarkMode]);
 
   return (
     <ThemeProvider theme={theme}>
       <GlobalStyles
-        // Transition between light and dark modes
         styles={{
           "*": {
             transition: "background-color 0.3s ease, color 0.3s ease",
           },
         }}
       />
-      <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<NewSessionHandler />} />
-          <Route path="/:sessionId" element={<UserJoin />} />
-        </Routes>
-      </BrowserRouter>
+      {children}
     </ThemeProvider>
   );
 }
-
-export default App;
