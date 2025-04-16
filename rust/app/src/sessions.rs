@@ -26,6 +26,7 @@ pub type SharedSession = Arc<Session>;
 pub type SharedServer = Arc<RwLock<Server>>;
 
 /// A concurrently accessible container for all Corust sessions.
+#[derive(Debug)]
 pub struct SessionMap {
     pub(crate) sessions: DashMap<SessionId, SharedSession>,
 }
@@ -44,7 +45,7 @@ impl SessionMap {
     }
 
     pub fn get_or_create_session(&self, session_id: &str) -> SharedSession {
-        log::debug!("Getting or creating session with ID {}", session_id);
+        tracing::debug!("Getting or creating session with ID {}", session_id);
         if !self.sessions.contains_key(session_id) {
             self.create_session(session_id);
         }
@@ -54,7 +55,7 @@ impl SessionMap {
 
     /// Creates a new session given a session ID. IDs are requested by the users and not assigned by the server
     pub fn create_session(&self, session_id: &str) {
-        log::debug!("Creating session with ID {}", session_id);
+        tracing::debug!("Creating session with ID {}", session_id);
         let session = Session::new(session_id.to_string());
         self.sessions
             .insert(session_id.to_string(), Arc::new(session));
@@ -67,7 +68,7 @@ impl SessionMap {
         session_id: &str,
         document_state: DocumentState,
     ) -> SharedSession {
-        log::debug!(
+        tracing::debug!(
             "Getting or creating session with ID {} and document",
             session_id
         );
@@ -81,12 +82,13 @@ impl SessionMap {
     }
 
     pub fn get_session(&self, session_id: &str) -> Option<SharedSession> {
-        log::debug!("Get session with ID {}", session_id);
+        tracing::debug!("Get session with ID {}", session_id);
         self.sessions.get(session_id).as_deref().map(Arc::clone)
     }
 }
 
 /// A single Corust session
+#[derive(Debug)]
 pub struct Session {
     session_id: SessionId,
     server: SharedServer,

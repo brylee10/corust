@@ -165,7 +165,7 @@ pub trait Backend {
     }
 }
 
-#[derive(Default)]
+#[derive(Default, Debug)]
 pub struct DockerBackend {}
 
 impl DockerBackend {
@@ -243,13 +243,14 @@ pub struct RunContainerResult {
 
 /// A factory for creating containers with a specific backend.
 /// The factory controls the number of concurrent containers that can be run.
-pub struct ContainerFactory<B> {
+#[derive(Debug)]
+pub struct ContainerFactory<B: std::fmt::Debug> {
     // Controls number of concurrent containers
     semaphore: Arc<Semaphore>,
     backend: B,
 }
 
-impl<B: Backend> ContainerFactory<B> {
+impl<B: Backend + std::fmt::Debug> ContainerFactory<B> {
     pub fn new(max_concurrent_containers: usize, backend: B) -> Self {
         ContainerFactory {
             semaphore: Arc::new(Semaphore::new(max_concurrent_containers)),
@@ -642,6 +643,7 @@ mod test {
     const TEST_MAX_CONCURRENT_CONTAINERS: usize = 2;
     const TEST_TIMEOUT_SEC: u64 = 10;
 
+    #[derive(Debug)]
     struct TestContainerBackend {
         // Own temp dir so the directory is not dropped until the backend is dropped
         _temp_dir: TempDir,

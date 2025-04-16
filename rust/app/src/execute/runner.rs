@@ -6,6 +6,7 @@ use std::{
     },
 };
 
+use axum::extract::ws::Message;
 use corust_components::{
     RunConfig, RunConfigAction, RunConfigExec, RunStateUpdate, RunStatus, ServerMessage,
 };
@@ -22,7 +23,6 @@ use tokio::sync::{
     broadcast,
     mpsc::{Sender, error::SendError},
 };
-use warp::filters::ws::Message;
 
 use crate::{sessions::SharedSession, websocket::SharedWsSender};
 
@@ -48,6 +48,7 @@ pub enum RunCodeError {
 }
 
 /// Checks if concurrent complations of the same type are occurring. One per session.
+#[derive(Debug)]
 pub struct ConcurrentRunChecker {
     is_running: FnvHashMap<RunType, AtomicBool>,
 }
@@ -158,8 +159,8 @@ impl RunProgressNotifier {
     // Acquires the code lock for the session. Returns an error if a concurrent compilation.
     async fn try_acquire_code_lock(&self) -> Result<(), RunCodeError> {
         // Acquire and drop the session lock. Do not hold it across the container run.
-        log::debug!("Before acquire session lock in run_code");
-        log::debug!("Acquired session lock in run_code");
+        tracing::debug!("Before acquire session lock in run_code");
+        tracing::debug!("Acquired session lock in run_code");
         let concurrent_run_checker = self.session.concurrent_run_checker();
         if let Err(e) = concurrent_run_checker.compare_exchange(self.run_type, false, true) {
             assert!(
@@ -175,7 +176,7 @@ impl RunProgressNotifier {
 
 impl Drop for RunProgressNotifier {
     fn drop(&mut self) {
-        log::debug!("RunProgressNotifier drop called");
+        tracing::debug!("RunProgressNotifier drop called");
         // Reset the concurrent run flag
         let concurrent_run_checker = self.session.concurrent_run_checker();
         assert!(
@@ -225,7 +226,7 @@ pub(crate) async fn run_code(
         }));
     if let Err(e) = bcast_tx.send(run_config_msg) {
         // Not an error, just means all receiver handles have been closed
-        log::info!("All receiver handles have been closed. {e:?}");
+        tracing::info!("All receiver handles have been closed. {e:?}");
     }
 
     // Implicit starting state of all executions, an empty stdout/stdin. Useful to reset all users previous output
@@ -246,7 +247,7 @@ pub(crate) async fn run_code(
 
     // Only return error on non zero exit code after the concurrent run flag is reset
     if !exit_status.success() {
-        log::error!(
+        tracing::error!(
             "Runner exited code execution with non zero code: {:?}",
             exit_status
         );
@@ -268,7 +269,7 @@ pub(crate) async fn ws_notify_concurrent_code_error(
     let msg = serde_json::to_string(&server_message).unwrap();
     let msg = Message::text(msg);
     if let Err(e) = shared_ws_tx.write().await.send(msg).await {
-        log::info!("All receiver handles have been closed. {e:?}");
+        tracing::info!("All receiver handles have been closed. {e:?}");
     }
 }
 
@@ -282,7 +283,7 @@ pub(crate) async fn bcast_notify_output_size_error(
         run_state_update: RunStateUpdate::StdoutErrTooLarge,
     });
     if let Err(e) = bcast_tx.send(server_message) {
-        log::info!("All receiver handles have been closed. {e:?}");
+        tracing::info!("All receiver handles have been closed. {e:?}");
     }
 }
 
@@ -296,7 +297,7 @@ pub(crate) fn bcast_code_run_started(
     });
     if let Err(e) = bcast_tx.send(run_started_msg) {
         // Not an error, just means all receiver handles have been closed
-        log::info!("All receiver handles have been closed. {e:?}");
+        tracing::info!("All receiver handles have been closed. {e:?}");
         // Handle error (e.g., all receiver handles have been closed)
     }
 }
@@ -312,7 +313,7 @@ pub(crate) fn bcast_code_run_finished(
     });
     if let Err(e) = bcast_tx.send(run_ended_msg) {
         // Not an error, just means all receiver handles have been closed
-        log::info!("All receiver handles have been closed. {e:?}");
+        tracing::info!("All receiver handles have been closed. {e:?}");
         // Handle error (e.g., all receiver handles have been closed)
     }
 }

@@ -29,7 +29,7 @@ pub struct SandboxMetadata {
 }
 
 impl SandboxMetadata {
-    pub async fn versions<B: Backend>(
+    pub async fn versions<B: Backend + std::fmt::Debug>(
         &self,
         factory: &ContainerFactory<B>,
     ) -> Result<Versions, SandboxMetadataError> {

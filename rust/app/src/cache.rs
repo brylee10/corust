@@ -45,7 +45,7 @@ where
                 if item.last_updated.elapsed() <= self.ttl {
                     Ok(item.inner.clone())
                 } else {
-                    log::trace!("Setting new cached item");
+                    tracing::trace!("Setting new cached item");
                     Self::set_value(data, generator).await
                 }
             }

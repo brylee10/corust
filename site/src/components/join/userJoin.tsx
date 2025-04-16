@@ -60,7 +60,14 @@ function UserJoin() {
       }}
     >
       <Typography variant="h6">Connecting to session...</Typography>
-      <Image src="/ferris512.png" alt="Ferris!" width={100} height={100} />
+      {/* No lazy loading to improve the largest contentful paint*/}
+      <Image
+        src="/ferris512.png"
+        alt="Ferris!"
+        width={100}
+        height={100}
+        priority
+      />
     </Box>
   );
 }

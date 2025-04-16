@@ -16,10 +16,8 @@ corust-sandbox              = { version = "*", path = "../sandbox" }
 corust-types                = { version = "*", path = "../types" }
 dashmap                     = "6.1"
 dotenv                      = "0.15"
-env_logger                  = "0.11"
 fnv                         = "1.0"
 futures-util                = "0.3"
-log                         = "0.4"
 parking_lot                 = "0.12"
 rand                        = "0.8"
 random_color                = "0.8"
@@ -33,5 +31,8 @@ tokio                       = { version = "1", features = ["full"] }
 tokio-util                  = { version = "0.7", features = ["io"] }
 tokio-stream                = "0.1"
 uuid                        = { version = "1", features = ["v4", "serde"] }
-warp                        = "0.3"
+axum                        = { version = "0.8", features = ["ws"] }
+tracing                     = "0.1"
+tracing-subscriber          = { version = "0.3", features = ["env-filter"] }
+tower-http                  = { version = "0.6", features = ["cors", "trace"] }
     

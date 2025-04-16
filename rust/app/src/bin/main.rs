@@ -2,21 +2,20 @@ use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use ansi_term::Color;
+use axum::http::Method;
+use axum::routing::{get, post};
+use axum::{Router, http};
 use corust_app::db::{CompilationTable, DocumentTable, Table, UserTable};
-use corust_app::errors::{favicon_route, handle_rejection};
-use corust_app::execute::metadata::metadata_routes;
+use corust_app::execute::metadata::metadata;
 use corust_app::sandbox_metadata::SandboxMetadata;
-use env_logger::Builder;
-use log::Level;
 
-use std::io::Write;
-use warp::Filter;
+use tower_http::cors::CorsLayer;
+use tracing_subscriber::EnvFilter;
 
 use corust_app::background::spawn_background_session_managers;
 use corust_app::sessions::{SessionMap, SharedSessionMap};
-use corust_app::users::user_join_route;
-use corust_app::{root_page, websocket::*};
+use corust_app::users::{join_session_no_user, join_session_with_user};
+use corust_app::{AppState, favicon, handler_404, root_page, websocket::*};
 use corust_sandbox::container::{ContainerFactory, DockerBackend};
 
 /// The maximum number of concurrent containers that can be running at once. Used to avoid overloading the CPU
@@ -29,29 +28,13 @@ async fn main() {
     // Will resolve to `None` in prod where `.env` is not present
     dotenv::dotenv().ok();
 
-    let mut builder = Builder::from_default_env();
-    builder
-        .format(|buf, record| {
-            let level = match record.level() {
-                Level::Error => Color::Red.paint("ERROR"),
-                Level::Warn => Color::Yellow.paint("WARN"),
-                Level::Info => Color::Green.paint("INFO"),
-                Level::Debug => Color::Blue.paint("DEBUG"),
-                Level::Trace => Color::Purple.paint("TRACE"),
-            };
-
-            writeln!(
-                buf,
-                "[{} {}:{}] {}",
-                level,
-                record.file().unwrap_or("unknown"),
-                record.line().unwrap_or(0),
-                record.args()
-            )
-        })
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::new(
+            std::env::var("RUST_LOG").unwrap_or_else(|_| "info".into()),
+        ))
         .init();
 
-    log::info!("Starting Rust server! 🚀");
+    tracing::info!("Starting Rust server! 🚀");
     let sandbox_metadata = Arc::new(SandboxMetadata::default());
     let session_map: SharedSessionMap = Arc::new(SessionMap::new());
     let container_factory = Arc::new(ContainerFactory::new(
@@ -74,44 +57,46 @@ async fn main() {
     // Start a background tasks to archive empty sessions and remove inactive users
     spawn_background_session_managers(Arc::clone(&session_map), db_path.clone());
 
-    // warp::ws() is composed of many filters to handle HTTP -> websocket upgrade
-    let websocket_route = websocket_route(
-        Arc::clone(&session_map),
-        Arc::clone(&container_factory),
-        db_path.clone(),
-    );
-    let user_join_route = user_join_route(Arc::clone(&session_map), db_path);
-    let root_page_route = root_page();
-    let versions_route = metadata_routes(
-        Arc::clone(&sandbox_metadata),
-        Arc::clone(&container_factory),
-    );
-    let favicon_route = favicon_route();
+    let app_state = AppState {
+        session_map: Arc::clone(&session_map),
+        container_factory: Arc::clone(&container_factory),
+        sandbox_metadata: Arc::clone(&sandbox_metadata),
+        db_path: db_path.clone(),
+    };
 
     let cors_origin = std::env::var("FRONT_END_URI")
         .unwrap_or_else(|e| panic!("FRONT_END_URI must be set, {}", e));
-    log::info!("CORS origin set to: {}", cors_origin);
-    let cors = warp::cors()
-        .allow_origin(cors_origin.as_str())
-        // `PUT` and `DELETE` not valid endpoints for this server
-        .allow_methods(vec!["POST", "GET"])
-        .allow_headers(vec!["Authorization", "Content-Type"]);
+    tracing::info!("CORS origin set to: {}", cors_origin);
 
-    let routes = websocket_route
-        .or(user_join_route)
-        .or(root_page_route)
-        .or(versions_route)
-        .or(favicon_route)
-        .with(cors)
-        .recover(handle_rejection);
+    let cors = CorsLayer::new()
+        .allow_origin(cors_origin.parse::<axum::http::HeaderValue>().unwrap())
+        .allow_methods([Method::GET, Method::POST])
+        .allow_headers(vec![
+            http::header::AUTHORIZATION,
+            http::header::CONTENT_TYPE,
+        ]);
+
+    let app = Router::new()
+        .route("/websocket/{session_id}/{user_id}", get(websocket))
+        .route("/join/{session_id}/{user_id}", post(join_session_with_user))
+        .route("/join/{session_id}", post(join_session_no_user))
+        .route("/", get(root_page))
+        .route("/metadata/versions", get(metadata))
+        .route("/favicon.ico", get(favicon))
+        .with_state(app_state)
+        .layer(cors)
+        .fallback(handler_404);
 
     let addr = std::env::var("WS_SERVER_URI")
         .unwrap_or_else(|e| panic!("WS_SERVER_URI must be set, {}", e));
     // Heroku sets `PORT` per web process and routes all requests to this port
     // https://devcenter.heroku.com/articles/runtime-principles#web-servers
     let port = std::env::var("PORT").unwrap_or_else(|e| panic!("PORT must be set, {}", e));
-    log::info!("Listening on {}:{}", addr, port);
+    tracing::info!("Listening on {}:{}", addr, port);
     let socket_addr = format!("{}:{}", addr, port);
     let socket_addr: SocketAddr = socket_addr.parse().expect("Invalid socket address");
-    warp::serve(routes).run(socket_addr).await;
+    let listener = tokio::net::TcpListener::bind(socket_addr).await.unwrap();
+    axum::serve(listener, app.into_make_service())
+        .await
+        .unwrap();
 }

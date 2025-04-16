@@ -48,15 +48,15 @@ async fn spawn_prune_document_states_task(session_map: SharedSessionMap) {
     let mut prune_interval =
         tokio::time::interval(Duration::from_secs(PRUNE_DOCUMENT_STATES_INTERVAL_SEC));
     loop {
-        log::debug!("Starting prune document states task");
+        tracing::debug!("Starting prune document states task");
         prune_interval.tick().await;
         let start_time = Instant::now();
         for session in session_map.sessions.iter_mut() {
-            log::debug!("Pruning document states for session {}", session.key());
+            tracing::debug!("Pruning document states for session {}", session.key());
             session.server().write().await.prune_document_states();
         }
         let duration = start_time.elapsed();
-        log::debug!("Pruned document states took {:?}us", duration.as_micros());
+        tracing::debug!("Pruned document states took {:?}us", duration.as_micros());
     }
 }
 
@@ -78,7 +78,7 @@ pub(crate) async fn mark_remove_inactive_users(
     for (id, user) in server.read().await.users() {
         let user_last_activity = user.activity.last_activity;
         if user_last_activity.elapsed().as_secs() > MARK_INACTIVE_USER_SEC {
-            log::debug!(
+            tracing::debug!(
                 "User {user:?} in session ID {session_id} is inactive, marking as inactive"
             );
             users_to_mark.insert(*id);
@@ -86,7 +86,7 @@ pub(crate) async fn mark_remove_inactive_users(
             // Not an error because the user may have gracefully left the session
         }
         if user_last_activity.elapsed().as_secs() > REMOVE_INACTIVE_USERS_SEC {
-            log::debug!(
+            tracing::debug!(
                 "User {user:?} in session ID {session_id} has been inactive for {REMOVE_INACTIVE_USERS_SEC} sec, removing"
             );
             users_to_remove.insert(*id);
@@ -102,7 +102,7 @@ pub(crate) async fn mark_remove_inactive_users(
     for id in users_to_remove.iter() {
         // unwrap: user_id is only added to vector if it exists in the user map
         let user = server.write().await.users_mut().remove(id).unwrap();
-        log::debug!("Removing inactive user {user:?} from session ID {session_id}");
+        tracing::debug!("Removing inactive user {user:?} from session ID {session_id}");
 
         // On removal, users are saved to the database
         let user_table = UserTable::new(db_path.to_path_buf());
@@ -112,7 +112,7 @@ pub(crate) async fn mark_remove_inactive_users(
         };
         if let Err(e) = user_table.insert_or_update(user_key.clone(), user) {
             // This error is not fatal, but the user will not be saved to the database
-            log::error!("Error inserting user {user_key:?} into database on removal: {e}");
+            tracing::error!("Error inserting user {user_key:?} into database on removal: {e}");
         }
     }
 
@@ -126,9 +126,9 @@ pub(crate) async fn mark_remove_inactive_users(
 /// if they have not responded to pings within a certain time.
 /// Intended to run as a background task.
 async fn mark_remove_inactive_users_all_sessions(session_map: SharedSessionMap, db_path: PathBuf) {
-    log::debug!("Starting background task to mark and remove inactive users");
+    tracing::debug!("Starting background task to mark and remove inactive users");
     loop {
-        log::debug!("Checking for inactive users to mark and remove");
+        tracing::debug!("Checking for inactive users to mark and remove");
         for item in session_map.sessions.iter() {
             let (session_id, session) = item.pair();
             let server = Arc::clone(&session.server());
@@ -143,9 +143,9 @@ async fn mark_remove_inactive_users_all_sessions(session_map: SharedSessionMap, 
 /// Intended to run as a background task. The data is archived to a database.
 /// Archives both the document state and the user info.
 async fn archive_remove_empty_sessions(db_path: PathBuf, session_map: SharedSessionMap) {
-    log::debug!("Starting background task to archive empty sessions");
+    tracing::debug!("Starting background task to archive empty sessions");
     loop {
-        log::debug!("Checking for empty sessions to archive");
+        tracing::debug!("Checking for empty sessions to archive");
         let document_table = DocumentTable::new(db_path.clone());
         let user_table = UserTable::new(db_path.clone());
         let mut empty_sessions = Vec::new();
@@ -153,7 +153,7 @@ async fn archive_remove_empty_sessions(db_path: PathBuf, session_map: SharedSess
             let (session_id, session) = item.pair();
             let server = Arc::clone(&session.server());
             let server = server.read().await;
-            log::debug!(
+            tracing::debug!(
                 "Checking session_id {}, num active users: {}",
                 session_id,
                 server.active_users().len()
@@ -163,7 +163,7 @@ async fn archive_remove_empty_sessions(db_path: PathBuf, session_map: SharedSess
             }
         }
         for session_id in empty_sessions {
-            log::debug!("Archiving empty session: {}", session_id);
+            tracing::debug!("Archiving empty session: {}", session_id);
             // unwrap: `session_id`` was just retrieved from the `session_map`
             let session = session_map.get_session(&session_id).unwrap();
             let server = Arc::clone(&session.server());
@@ -175,7 +175,7 @@ async fn archive_remove_empty_sessions(db_path: PathBuf, session_map: SharedSess
             if let Err(e) = document_table
                 .insert_or_update(document_key, server.current_document_state().clone())
             {
-                log::error!(
+                tracing::error!(
                     "Error inserting or updating document while archiving empty sessions: {}",
                     e
                 );
@@ -187,12 +187,12 @@ async fn archive_remove_empty_sessions(db_path: PathBuf, session_map: SharedSess
                     user_id: *user_id,
                 };
                 if let Err(e) = user_table.insert_or_update(user_key, user.clone()) {
-                    log::error!(
+                    tracing::error!(
                         "Error inserting or updating user while archiving empty sessions: {}",
                         e
                     );
                 }
-                log::debug!("Archived user {:?} in session id {}", user, session_id);
+                tracing::debug!("Archived user {:?} in session id {}", user, session_id);
             }
             drop(server);
             // Remove the session from the session map

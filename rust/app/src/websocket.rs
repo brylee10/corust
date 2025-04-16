@@ -1,6 +1,10 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use axum::body::Bytes;
+use axum::extract::ws::{Message, Utf8Bytes, WebSocket};
+use axum::extract::{self, State, WebSocketUpgrade};
+use axum::response::IntoResponse;
 use corust_components::network::{UserId, UserList};
 use corust_components::server::ServerError;
 use corust_components::{BroadcastLocalDocUpdate, RunConfig, RunConfigAction, RunConfigUpdate};
@@ -12,7 +16,9 @@ use futures_util::stream::{SplitSink, SplitStream, StreamExt};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::{RwLock, broadcast, mpsc};
+use tracing::instrument;
 
+use crate::AppState;
 use crate::background::{MarkRemoveUsers, mark_remove_inactive_users};
 use crate::db::{Compilation, CompilationTable, CompilationTableKey, Table};
 use crate::execute::runner::{
@@ -23,10 +29,6 @@ use crate::sessions::{SessionId, SharedServer, SharedSession, SharedSessionMap};
 use corust_components::{ServerMessage, Snapshot, network::RemoteUpdate};
 use tokio::sync::broadcast::error::{RecvError, SendError};
 use tokio::time::Duration;
-use warp::{
-    Filter,
-    filters::ws::{Message, WebSocket},
-};
 
 // Frequency to send pings to each client, in seconds
 pub const PING_INTERVAL_SEC: u64 = 10;
@@ -47,11 +49,11 @@ type IsConnectionOpen = bool;
 #[derive(Debug, Error)]
 pub enum WebSocketError {
     #[error(transparent)]
-    WarpError(#[from] warp::Error),
-    #[error(transparent)]
     SendError(#[from] SendError<ServerMessage>),
     #[error(transparent)]
     RecvError(#[from] RecvError),
+    #[error(transparent)]
+    AxumError(#[from] axum::Error),
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -149,7 +151,7 @@ async fn broadcast_user_list(
     let msg = ServerMessage::UserList(user_list);
 
     if let Err(e) = bcast_tx.send(msg) {
-        log::error!("All receiver handles have been closed. {e:?}");
+        tracing::error!("All receiver handles have been closed. {e:?}");
         return Err(e)?;
     }
     Ok(())
@@ -212,13 +214,15 @@ async fn handle_messages(
             },
         }
     }
-    log::debug!("Closed websocket handling loop for user ID {user_id:?} in session {session_id:?}");
+    tracing::debug!(
+        "Closed websocket handling loop for user ID {user_id:?} in session {session_id:?}"
+    );
     Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
 async fn handle_ws_message(
-    next: Option<Result<Message, warp::Error>>,
+    next: Option<Result<Message, axum::Error>>,
     server: SharedServer,
     bcast_tx: tokio::sync::broadcast::Sender<ServerMessage>,
     shared_ws_tx: SharedWsSender,
@@ -233,34 +237,39 @@ async fn handle_ws_message(
     match next {
         Some(msg) => match msg {
             Ok(msg) => {
-                if msg.is_text() {
-                    handle_text_message(
-                        msg,
-                        bcast_tx,
-                        shared_ws_tx,
-                        session,
-                        container_factory,
-                        username,
-                        user_id,
-                        db_path,
-                    )
-                    .await?;
-                } else if msg.is_pong() {
-                    handle_pong_message(server, user_id, session_id).await;
-                } else if msg.is_close() {
-                    handle_close_message(server, bcast_tx, user_id, session_id).await?;
-                    return Ok(false);
+                match msg {
+                    Message::Text(text) => {
+                        handle_text_message(
+                            text,
+                            bcast_tx,
+                            shared_ws_tx,
+                            session,
+                            container_factory,
+                            username,
+                            user_id,
+                            db_path,
+                        )
+                        .await?;
+                    }
+                    Message::Pong(_) => {
+                        handle_pong_message(server, user_id, session_id).await;
+                    }
+                    Message::Close(_) => {
+                        handle_close_message(server, bcast_tx, user_id, session_id).await?;
+                        return Ok(false);
+                    }
+                    _ => { /* Ignore other message types */ }
                 }
             }
             Err(e) => {
                 // Handle error (e.g., parse error). Log error but continue connection.
-                log::error!("Error parsing received message on ws, {e:?}");
+                tracing::error!("Error parsing received message on ws, {e:?}");
             }
         },
         // Connection closed
         // Close frame should be received before this point and exit early, so this typically will not occur
         None => {
-            log::info!(
+            tracing::info!(
                 "User ID {user_id} in session ID {session_id} ws Stream exhausted, no more messages."
             );
             return Ok(false);
@@ -271,7 +280,7 @@ async fn handle_ws_message(
 
 #[allow(clippy::too_many_arguments)]
 async fn handle_text_message(
-    msg: Message,
+    msg: Utf8Bytes,
     bcast_tx: tokio::sync::broadcast::Sender<ServerMessage>,
     shared_ws_tx: SharedWsSender,
     session: SharedSession,
@@ -283,8 +292,8 @@ async fn handle_text_message(
     // Convert network serialized method into native struct
     // to_str() is always valid because msg `is_text`
     // TODO: Replace this with `RemoteUpdate` for consistency
-    let msg = msg.to_str().unwrap();
-    log::trace!("Received raw message from client: {msg:?}");
+    let msg = msg.as_str();
+    tracing::trace!("Received raw message from client: {msg:?}");
     let client_ws_msg: WsClientTextMsg = serde_json::from_str(msg).unwrap();
     let server = session.server();
     match client_ws_msg {
@@ -298,11 +307,11 @@ async fn handle_text_message(
                 msg.user_id(),
             );
             if let Err(e) = &res {
-                log::error!("Error applying client operation to server: {e:?}");
+                tracing::error!("Error applying client operation to server: {e:?}");
             }
             let (text_op, cursor_map) = res.unwrap();
 
-            log::trace!(
+            tracing::trace!(
                 "Current server document: {}",
                 server.read().await.current_document_state().document()
             );
@@ -320,13 +329,13 @@ async fn handle_text_message(
             // Broadcast the message to other clients
             if let Err(e) = bcast_tx.send(msg) {
                 // Not an error, just means all receiver handles have been closed
-                log::debug!("All receiver handles have been closed. {e:?}");
+                tracing::debug!("All receiver handles have been closed. {e:?}");
                 // Handle error (e.g., all receiver handles have been closed)
                 return Err(e)?;
             }
         }
         WsClientTextMsg::Execute(execute_command) => {
-            log::debug!("Received Execute Command from client: {execute_command:?}");
+            tracing::debug!("Received Execute Command from client: {execute_command:?}");
             // Spawn new task for execution to allow processing other ws messages
             let session = Arc::clone(&session);
             let container_factory: Arc<corust_sandbox::container::ContainerFactory<DockerBackend>> =
@@ -351,7 +360,7 @@ async fn handle_text_message(
             });
         }
         WsClientTextMsg::ConfigUpdate(run_config_update) => {
-            log::debug!("Received Run Config Update from client: {run_config_update:?}");
+            tracing::debug!("Received Run Config Update from client: {run_config_update:?}");
             session.set_run_config(run_config_update.run_config);
             let msg = ServerMessage::RunConfigAction(RunConfigAction::ConfigUpdate(
                 run_config_update.clone(),
@@ -364,7 +373,7 @@ async fn handle_text_message(
 
 async fn handle_pong_message(server: SharedServer, user_id: UserId, session_id: SessionId) {
     let activity_time = std::time::Instant::now();
-    log::debug!(
+    tracing::debug!(
         "Received pong from client {user_id} in session ID {session_id} at time {activity_time:?}"
     );
     match server.write().await.users_mut().get_mut(&user_id) {
@@ -384,7 +393,7 @@ async fn handle_close_message(
     user_id: UserId,
     session_id: SessionId,
 ) -> Result<(), WebSocketError> {
-    log::debug!(
+    tracing::debug!(
         "Received graceful close message from client {user_id} in session ID {session_id}, removing user"
     );
     match server.write().await.mark_user_inactive(user_id) {
@@ -407,22 +416,22 @@ async fn forward_broadcast_message(
             let msg = serde_json::to_string(&msg)
                 .unwrap_or_else(|e| panic!("Error serializing string {msg:?}, error {e}"));
             let msg: Message = Message::text(msg);
-            log::trace!("Sending message to clients: {msg:?}");
+            tracing::trace!("Sending message to clients: {msg:?}");
             if let Err(e) = shared_ws_tx.write().await.send(msg).await {
                 // User has ungracefully terminated their websocket connection.
                 // This may be due to refreshing the page. This is expected to occur, so
                 // the server will close its message handler on this connection.
-                log::debug!("Receiver websocket closed. {e:?}");
+                tracing::debug!("Receiver websocket closed. {e:?}");
                 return Err(e)?;
             }
         }
         Err(e) => match e {
             RecvError::Closed => {
-                log::info!("All senders have been dropped, receiver closing");
+                tracing::info!("All senders have been dropped, receiver closing");
                 return Err(e)?;
             }
             RecvError::Lagged(msg_cnt) => {
-                log::error!("Receiver has lagged {msg_cnt} messages");
+                tracing::error!("Receiver has lagged {msg_cnt} messages");
                 return Err(e)?;
             }
         },
@@ -436,14 +445,14 @@ async fn send_ping(
     session_id: SessionId,
     server: SharedServer,
 ) {
-    log::debug!("Sending ping to user ID {user_id} in session ID {session_id}");
+    tracing::debug!("Sending ping to user ID {user_id} in session ID {session_id}");
     if let Err(e) = shared_ws_tx
         .write()
         .await
-        .send(Message::ping(Vec::new()))
+        .send(Message::Ping(Bytes::from_static(&[])))
         .await
     {
-        log::error!("Failed to send ping: {e}");
+        tracing::error!("Failed to send ping: {e}");
         return;
     }
 
@@ -453,7 +462,7 @@ async fn send_ping(
     let msg = serde_json::ser::to_string(&msg).unwrap();
     let msg: Message = Message::text(msg);
     if let Err(e) = shared_ws_tx.write().await.send(msg).await {
-        log::error!("Failed to send ping: {e}");
+        tracing::error!("Failed to send ping: {e}");
     }
 }
 
@@ -478,7 +487,7 @@ async fn handle_execution(
     let compilation = Compilation { user_id };
     if let Err(e) = compilation_table.insert_or_update(compilation_key.clone(), compilation) {
         // This error is not fatal, but the user will not be saved to the database
-        log::error!("Error inserting compilation {compilation_key:?} into database: {e}");
+        tracing::error!("Error inserting compilation {compilation_key:?} into database: {e}");
     }
     let container_msg = ContainerMessage::Execute(execute_command.clone());
     let (container_response_tx, mut container_response_rx) =
@@ -517,23 +526,23 @@ async fn handle_execution(
         // Note: This requires repeatedly copying the `RunnerOutput` which may be inefficient
         code_output_state.runner_output = Some(runner_output.clone());
         let msg = ServerMessage::Run(runner_output);
-        log::debug!("Sending run output to clients");
-        log::trace!("{msg:?}");
+        tracing::debug!("Sending run output to clients");
+        tracing::trace!("{msg:?}");
         // Broadcast the message to other clients
         if let Err(e) = bcast_tx.send(msg) {
             // Not an error, just means all receiver handles have been closed
-            log::debug!("All receiver handles have been closed. {e:?}");
+            tracing::debug!("All receiver handles have been closed. {e:?}");
             // Handle error (e.g., all receiver handles have been closed)
             break;
         }
     }
 
     // This should exit immediately since the container response channel is closed
-    log::debug!("Waiting for task execution to complete");
+    tracing::debug!("Waiting for task execution to complete");
     match handle.await.unwrap() {
         Ok(_) => {}
         Err(e) => {
-            log::error!(
+            tracing::error!(
                 "Error running code: {e:?} in session {}",
                 session.session_id().clone()
             );
@@ -548,7 +557,7 @@ async fn handle_execution(
                     bcast_notify_output_size_error(bcast_tx.clone(), RunType::Execute).await;
                 }
                 RunCodeError::RunnerNonZeroExit(exit_status) => {
-                    log::error!("Runner non-zero exit: {exit_status}");
+                    tracing::error!("Runner non-zero exit: {exit_status}");
                 }
                 _ => {}
             }
@@ -571,9 +580,9 @@ async fn ws_mark_remove_inactive_users(
     ws_tx: SharedWsSender,
     db_path: &Path,
 ) -> RemoveUsersRet {
-    log::debug!("Checking if users in session ID {session_id} are inactive");
+    tracing::debug!("Checking if users in session ID {session_id} are inactive");
 
-    log::debug!(
+    tracing::debug!(
         "All users (inactive + active) present in session ID {session_id}: {:?}",
         server.read().await.users()
     );
@@ -585,12 +594,12 @@ async fn ws_mark_remove_inactive_users(
         // tx close would initiate close handshake with client, but
         match ws_tx.write().await.close().await {
             Ok(_) => {
-                log::debug!(
+                tracing::debug!(
                     "Closed websocket for inactive current user {user_id} from session ID {session_id}"
                 );
             }
             Err(e) => {
-                log::error!(
+                tracing::error!(
                     "Failed to close websocket for current user {user_id} from session ID {session_id}: {e}"
                 );
             }
@@ -632,38 +641,35 @@ async fn send_snapshot(
     for msg in messages {
         let msg = serde_json::ser::to_string(&msg).unwrap();
         let msg: Message = Message::text(msg);
-        log::debug!("Send snapshot to new client: {msg:?}");
+        tracing::debug!("Send snapshot to new client: {msg:?}");
         if let Err(e) = ws_tx.send(msg).await {
-            log::error!("Sending error, all receiver handles have been closed. {e:?}");
+            tracing::error!("Sending error, all receiver handles have been closed. {e:?}");
             // Handle error (e.g., all receiver handles have been closed)
         }
     }
 }
 
-pub fn websocket_route(
-    session_map: SharedSessionMap,
-    container_factory: SharedContainerFactory,
-    db_path: PathBuf,
-) -> impl Filter<Extract = impl warp::Reply, Error = warp::Rejection> + Clone {
-    warp::path("websocket")
-        .and(warp::path::param())
-        .and(warp::path::param())
-        .and(warp::ws())
-        .map(
-            move |session_id: String, user_id: UserId, ws: warp::ws::Ws| {
-                let session_map = Arc::clone(&session_map);
-                let container_factory = Arc::clone(&container_factory);
-                let db_path = db_path.clone();
-                ws.on_upgrade(move |ws| {
-                    handle_websocket(
-                        ws,
-                        session_map,
-                        session_id,
-                        user_id,
-                        container_factory,
-                        db_path,
-                    )
-                })
-            },
+#[instrument]
+pub async fn websocket(
+    State(app_state): State<AppState>,
+    extract::Path((session_id, user_id)): extract::Path<(String, UserId)>,
+    ws: WebSocketUpgrade,
+) -> impl IntoResponse {
+    // Clone the necessary state from app_state
+    let session_map = Arc::clone(&app_state.session_map);
+    let container_factory = Arc::clone(&app_state.container_factory);
+    let db_path = app_state.db_path.clone();
+
+    // Return the upgraded connection with our handler function
+    ws.on_upgrade(move |socket| async move {
+        handle_websocket(
+            socket,
+            session_map,
+            session_id,
+            user_id,
+            container_factory,
+            db_path,
         )
+        .await
+    })
 }
