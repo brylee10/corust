@@ -57,7 +57,7 @@ use thiserror::Error;
 use wasm_bindgen::prelude::*;
 
 /// Maximum 1000 document updates a minute.
-/// For reference, 1000 character updates per minute is about 200 words per minute.
+/// For reference, 1000 character updates per minute is about 200 words per minute - a very fast typing speed!
 const MAX_UPDATES_PER_MINUTE: usize = 1000;
 
 /// Maximum cumulative size of documents (in characters) sent per minute.

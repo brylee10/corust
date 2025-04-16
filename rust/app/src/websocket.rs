@@ -13,15 +13,13 @@ use serde::{Deserialize, Serialize};
 use thiserror::Error;
 use tokio::sync::{RwLock, broadcast, mpsc};
 
+use crate::background::{MarkRemoveUsers, mark_remove_inactive_users};
 use crate::db::{Compilation, CompilationTable, CompilationTableKey, Table};
 use crate::execute::runner::{
     RunCodeError, RunType, SharedContainerFactory, bcast_notify_output_size_error,
     container_response_to_runner_output, run_code, ws_notify_concurrent_code_error,
 };
-use crate::sessions::{
-    MarkRemoveUsers, SessionId, SharedServer, SharedSession, SharedSessionMap,
-    mark_remove_inactive_users,
-};
+use crate::sessions::{SessionId, SharedServer, SharedSession, SharedSessionMap};
 use corust_components::{ServerMessage, Snapshot, network::RemoteUpdate};
 use tokio::sync::broadcast::error::{RecvError, SendError};
 use tokio::time::Duration;

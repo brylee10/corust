@@ -1,7 +1,10 @@
 //!  Sample server to illustrate operational transform
 
 use anyhow::Result;
-use std::ops::{Deref, DerefMut};
+use std::{
+    collections::HashSet,
+    ops::{Deref, DerefMut},
+};
 
 use fnv::FnvHashMap;
 
@@ -80,6 +83,7 @@ pub struct Server {
     users: FnvHashMap<UserId, User>,
     // Map of user_id to the state_id of the document state the user is at
     user_doc_states: FnvHashMap<UserId, StateId>,
+    // Minimum state_id of
 }
 
 impl Server {
@@ -196,8 +200,8 @@ impl Server {
         // overrides the server values when they were previously deleted.
         let _ = new_cursor_map.insert(user_id, *transformed_user_cursor_map.get(&user_id).unwrap());
 
-        // Prune any old document states
-        self.update_and_prune_document_states(user_id, state_id);
+        // Update this user's document state
+        self.update_document_states(user_id, state_id);
 
         self.current_state_id += 1;
         // Perf note: this requires an allocation of a new cursor hashmap each time
@@ -213,20 +217,39 @@ impl Server {
         Ok((client_op_applied, new_cursor_map))
     }
 
-    // Updates the last server state for user `user_id` to `state_id` and prunes any document states that are less than
-    // the minimal state id of all users to save memory.
-    fn update_and_prune_document_states(&mut self, user_id: UserId, state_id: StateId) {
+    // Updates the last server state for user `user_id` to `state_id`
+    fn update_document_states(&mut self, user_id: UserId, state_id: StateId) {
         // Prune any old document states
         *self.user_doc_states.entry(user_id).or_insert(state_id) = state_id;
-        let mut states_to_remove = Vec::new();
+    }
+
+    // Prunes any document states that are less than the minimal state id of all users to save memory,
+    // leaving at least one document state.
+    pub fn prune_document_states(&mut self) {
+        let mut states_to_remove: Vec<u64> = Vec::new();
+        let mut min_state_id = u64::MAX;
+        for user in self.active_users().iter() {
+            if let Some(user_doc_state_id) = self.user_doc_states.get(&user.user_id()) {
+                if user_doc_state_id < &min_state_id {
+                    min_state_id = *user_doc_state_id;
+                }
+            }
+        }
+
+        let mut max_state_id = 0;
         for (id, _) in self.document_states.iter() {
-            if *id < state_id {
+            if *id < min_state_id {
                 states_to_remove.push(*id);
+            }
+            if *id > max_state_id {
+                max_state_id = *id;
             }
         }
         for state_id in states_to_remove {
-            log::debug!("Pruning document with ID {state_id} from history");
-            self.document_states.remove(&state_id);
+            if state_id != max_state_id {
+                log::debug!("Pruning document with ID {state_id}");
+                self.document_states.remove(&state_id);
+            }
         }
     }
 
@@ -234,6 +257,8 @@ impl Server {
         if self.users.contains_key(&user.user_id()) {
             return Err(ServerError::DuplicateUserId(user.user_id()));
         }
+        self.user_doc_states
+            .insert(user.user_id(), self.current_state_id);
         self.users.insert(user.user_id(), user);
         Ok(())
     }
@@ -300,7 +325,7 @@ impl Server {
         Ok(())
     }
 
-    pub fn active_users(&self) -> Vec<User> {
+    pub fn active_users(&self) -> HashSet<User> {
         self.users
             .values()
             .filter(|user| user.activity.active)
@@ -479,5 +504,106 @@ impl Deref for ServerNetwork {
 impl DerefMut for ServerNetwork {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.inner
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    fn create_user(server: &mut Server) -> User {
+        let user_id = server.next_user_id();
+        let activity = Activity {
+            active: true,
+            last_activity: std::time::Instant::now(),
+        };
+        User::new(user_id, "".to_string(), "".to_string(), activity)
+    }
+
+    #[test]
+    fn test_prune_document_states() {
+        // Tests that document states are pruned if no active user has
+        // a document state less than the state id
+        let mut server = Server::new();
+
+        // Simulates one user editing the document
+        let user_1 = create_user(&mut server);
+        let user_1_id = user_1.user_id();
+        server.add_user(user_1).unwrap();
+
+        server.document_states.insert(
+            0,
+            DocumentState::new(
+                0,
+                "1".to_string(),
+                TextOperation::default(),
+                CursorMap::default(),
+            ),
+        );
+        let document = DocumentState::new(
+            1,
+            "12".to_string(),
+            TextOperation::default(),
+            CursorMap::default(),
+        );
+        let state_id = document.state_id();
+        server.document_states.insert(1, document);
+        server.update_document_states(user_1_id, state_id);
+        server.prune_document_states();
+
+        // The old document state should be pruned
+        assert_eq!(server.document_states.len(), 1);
+        assert!(!server.document_states.contains_key(&0));
+        assert!(server.document_states.contains_key(&1));
+
+        // Simulates adding another user, but they have a delayed state.
+        // Document states should not be pruned as long as they are active
+        let user_2 = create_user(&mut server);
+        let user_2_id = user_2.user_id();
+        server.add_user(user_2).unwrap();
+        server.document_states.insert(
+            2,
+            DocumentState::new(
+                2,
+                "123".to_string(),
+                TextOperation::default(),
+                CursorMap::default(),
+            ),
+        );
+        let document = DocumentState::new(
+            3,
+            "1234".to_string(),
+            TextOperation::default(),
+            CursorMap::default(),
+        );
+        let state_id = document.state_id();
+        server.document_states.insert(3, document);
+        server.update_document_states(user_1_id, state_id);
+        server.prune_document_states();
+
+        // Document states should not be pruned as long as they are active
+        assert_eq!(server.document_states.len(), 3);
+        assert!(!server.document_states.contains_key(&0));
+        assert!(server.document_states.contains_key(&1));
+        assert!(server.document_states.contains_key(&2));
+        assert!(server.document_states.contains_key(&3));
+
+        // Simulates the delayed user leaving the document
+        server.mark_user_inactive(user_2_id).unwrap();
+        server.update_document_states(user_1_id, state_id);
+        server.prune_document_states();
+
+        // Document states should be pruned as the user is no longer active
+        assert_eq!(server.document_states.len(), 1);
+        assert!(!server.document_states.contains_key(&0));
+        assert!(!server.document_states.contains_key(&1));
+        assert!(!server.document_states.contains_key(&2));
+        assert!(server.document_states.contains_key(&3));
+
+        // Even if all users are inactive, pruning document states should leave at least one document state
+        server.mark_user_inactive(user_1_id).unwrap();
+        server.prune_document_states();
+        assert_eq!(server.document_states.len(), 1);
+        assert!(server.document_states.contains_key(&3));
     }
 }

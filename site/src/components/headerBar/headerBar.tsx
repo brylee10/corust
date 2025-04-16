@@ -1,5 +1,5 @@
 import { UserInner } from "corust-components";
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect } from "react";
 import UserIconList from "./userIconList";
 import {
   Alert,
@@ -20,6 +20,7 @@ import { UserState } from "@/store/slices/userSlice";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "@/store/store";
 import { toggleDarkMode } from "@/store/slices/display";
+import GitHubIcon from "@mui/icons-material/GitHub";
 
 // Define constants once
 const CustomButton = styled(Button)(({ theme }) => {
@@ -67,6 +68,21 @@ function HeaderBar({
   );
   const theme = useTheme();
   const [openCopyNotification, setOpenCopyNotification] = React.useState(false);
+  const [buttonTheme, setButtonTheme] = React.useState({
+    color: theme.palette.grey[200],
+  });
+
+  useEffect(() => {
+    const darkButtonTheme = {
+      color: theme.palette.grey[200],
+    };
+    const lightButtonTheme = {
+      color: theme.palette.grey[800],
+    };
+    const buttonTheme = isDarkMode ? darkButtonTheme : lightButtonTheme;
+
+    setButtonTheme(buttonTheme);
+  }, [isDarkMode, theme]);
 
   const copyCorustLink = useCallback(() => {
     navigator.clipboard.writeText(window.location.href);
@@ -76,13 +92,7 @@ function HeaderBar({
   const renderThemeToggle = useCallback(() => {
     const toggleIcon = isDarkMode ? <LightModeIcon /> : <DarkModeIcon />;
     const toolTipTitle = isDarkMode ? "Toggle Light" : "Toggle Dark";
-    const darkButtonTheme = {
-      color: theme.palette.grey[200],
-    };
-    const lightButtonTheme = {
-      color: theme.palette.grey[800],
-    };
-    const buttonTheme = isDarkMode ? darkButtonTheme : lightButtonTheme;
+
     return (
       <Tooltip title={toolTipTitle} arrow>
         <IconButton onClick={() => dispatch(toggleDarkMode())} sx={buttonTheme}>
@@ -90,7 +100,23 @@ function HeaderBar({
         </IconButton>
       </Tooltip>
     );
-  }, [isDarkMode, dispatch, theme]);
+  }, [isDarkMode, dispatch, buttonTheme]);
+
+  const renderGithubButton = useCallback(() => {
+    return (
+      <Tooltip title="View the Code" arrow>
+        <IconButton
+          component="a"
+          href="https://github.com/brylee10/corust"
+          target="_blank"
+          rel="noopener noreferrer"
+          sx={buttonTheme}
+        >
+          <GitHubIcon />
+        </IconButton>
+      </Tooltip>
+    );
+  }, [buttonTheme]);
 
   return (
     <>
@@ -116,6 +142,7 @@ function HeaderBar({
             </CustomButton>
           </Tooltip>
           {renderThemeToggle()}
+          {renderGithubButton()}
         </Box>
       </Box>
       <Snackbar

@@ -41,7 +41,7 @@ const NAMES: [&str; 50] = [
     "LazyStatic",
     "Indexmap",
     "Thiserror",
-    "Memoffset",
+    "Async",
     "Socket2",
     "Mio",
     "Slab",
@@ -60,11 +60,11 @@ const NAMES: [&str; 50] = [
     "Rustix",
     "Tower",
     "Axum",
-    "Tracing",
-    "Either",
+    "Drop",
+    "Vector",
     "Uuid",
     "Instant",
-    "StaticAssertions",
+    "Unsafe",
     "StructOpt",
 ];
 

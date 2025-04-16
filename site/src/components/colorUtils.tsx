@@ -114,10 +114,10 @@ function parseRgbString(rgbString: string): RGBColor | null {
 
 // Adjusts an HSL color for dark mode.
 function darkModeHsl(hsl: HSLColor): HSLColor {
-  const { h, s, l } = hsl;
-  // Adjust lightness. Make dark colors brighter and light colors darker.
-  const isDarkColor = l < 30;
-  const adjustedL = isDarkColor ? Math.min(80, l + 40) : Math.max(10, l - 10);
+  const { h, s } = hsl;
+  // Adjust lightness to a reasonable value
+  // (light colors become darker, very dark colors become lighter)
+  const adjustedL = 40;
   // Slightly boost saturation to stand out from background, max 90
   const adjustedS = Math.min(80, s + 10);
   // Hue stays the same

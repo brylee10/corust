@@ -13,7 +13,8 @@ use log::Level;
 use std::io::Write;
 use warp::Filter;
 
-use corust_app::sessions::{SessionMap, SharedSessionMap, spawn_background_session_managers};
+use corust_app::background::spawn_background_session_managers;
+use corust_app::sessions::{SessionMap, SharedSessionMap};
 use corust_app::users::user_join_route;
 use corust_app::{root_page, websocket::*};
 use corust_sandbox::container::{ContainerFactory, DockerBackend};

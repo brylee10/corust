@@ -2,8 +2,9 @@
 import { useEffect } from "react";
 import MainPage from "@/components/mainPage";
 import { useParams } from "next/navigation";
-import { Box } from "@mui/material";
+import { Box, Typography } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
+import Image from "next/image";
 import {
   selectUserState,
   setUserState,
@@ -49,7 +50,18 @@ function UserJoin() {
   return userState.userId !== undefined && userState.username !== undefined ? (
     <MainPage currUser={userState as UserStateDefined} />
   ) : (
-    <Box>Failed to connect to server</Box>
+    <Box
+      sx={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        height: "100vh",
+      }}
+    >
+      <Typography variant="h6">Connecting to session...</Typography>
+      <Image src="/ferris512.png" alt="Ferris!" width={100} height={100} />
+    </Box>
   );
 }
 

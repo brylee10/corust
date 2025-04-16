@@ -3,7 +3,7 @@ import "./globals.css";
 import { Providers } from "./providers";
 
 export const metadata: Metadata = {
-  title: "Corust - Collaborative Rust Editor",
+  title: "Corust",
   description: "A collaborative execution environment for Rust.",
 };
 

@@ -1,3 +1,5 @@
+use std::hash::{Hash, Hasher};
+
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::prelude::*;
 
@@ -33,6 +35,12 @@ impl User {
 
     pub fn color(&self) -> &str {
         &self.inner.color
+    }
+}
+
+impl Hash for User {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.inner.user_id.hash(state);
     }
 }
 

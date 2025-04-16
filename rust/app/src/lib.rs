@@ -2,6 +2,7 @@
 
 use warp::Filter;
 
+pub mod background;
 pub mod cache;
 pub mod db;
 pub mod errors;

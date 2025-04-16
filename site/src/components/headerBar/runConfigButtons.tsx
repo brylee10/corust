@@ -204,6 +204,9 @@ function RunConfigButtons({
             endIcon={<KeyboardArrowDownIcon />}
             color="secondary"
             onClick={handleOptPopoverOpen}
+            sx={{
+              borderRight: "2px solid #CECECE !important",
+            }}
           >
             {optLevel}
           </ConfigButton>
