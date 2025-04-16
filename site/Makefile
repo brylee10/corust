@@ -21,8 +21,7 @@ start: build-wasm link
 dev: build-wasm link
 	@npm run dev
 
-# `corust_components` is a local npm package that is linked to `node_modules`, 
-# not installed from npm registry
+# Instead of treating `corust_components` as a local npm package that is linked to `node_modules`, 
+# directly copy the contents into `node_modules`. CRA supported linking, but NextJS is having some trouble.
 link:
-	@cd ../rust/components/pkg && npm link
-	@npm link corust-components
+	@rsync -a --delete ../rust/components/pkg/ ./node_modules/corust-components/

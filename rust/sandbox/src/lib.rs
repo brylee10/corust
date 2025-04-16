@@ -13,12 +13,12 @@ pub mod runner;
 const MESSAGE_BUF_SIZE_BYTES: usize = 8;
 
 pub fn init_logger(target: Target, log_level: String) {
-    let log_level = match log_level.to_lowercase().as_str() {
-        "error" => log::LevelFilter::Error,
-        "warn" => log::LevelFilter::Warn,
-        "info" => log::LevelFilter::Info,
-        "debug" => log::LevelFilter::Debug,
-        "trace" => log::LevelFilter::Trace,
+    let log_level = match log_level.to_uppercase().as_str() {
+        "ERROR" => log::LevelFilter::Error,
+        "WARN" => log::LevelFilter::Warn,
+        "INFO" => log::LevelFilter::Info,
+        "DEBUG" => log::LevelFilter::Debug,
+        "TRACE" => log::LevelFilter::Trace,
         _ => panic!("Invalid log level: {}", log_level),
     };
     env_logger::builder()

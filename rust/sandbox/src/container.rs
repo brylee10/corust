@@ -176,7 +176,7 @@ impl DockerBackend {
 
 impl Backend for DockerBackend {
     fn prepare_command(&self, channel: Channel) -> Command {
-        let docker_log_level = env::var("DOCKER_LOG_LEVEL").unwrap_or("info".to_string());
+        let docker_log_level = env::var("DOCKER_LOG_LEVEL").unwrap_or("INFO".to_string());
 
         let mut cmd = docker_utils::sandboxed_docker_command();
         let container_name = docker_utils::container_name();
@@ -652,7 +652,7 @@ mod test {
     impl TestContainerBackend {
         fn new(temp_dir: TempDir, test_project_dir: PathBuf) -> Self {
             INIT_ENV_LOGGER.call_once(|| {
-                init_logger(Target::Stdout, "info".to_string());
+                init_logger(Target::Stdout, "INFO".to_string());
             });
 
             INIT_TEST_RUNNER.call_once(|| {

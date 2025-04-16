@@ -18,6 +18,7 @@ import { UserSelectionRange } from "@/components/mainPage";
 interface EditorContainerProps {
   setView: (view: EditorView) => void;
   handleEditorChange: (viewUpdate: ViewUpdate) => void;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   userArr: any[];
   client: Client;
   getCollabSelections: (client: Client) => UserSelectionRange[];

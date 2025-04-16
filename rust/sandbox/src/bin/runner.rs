@@ -269,7 +269,7 @@ async fn main() -> Result<()> {
     let project_dir = env::args_os()
         .nth(1)
         .expect("Please specify Rust project directory as the first argument");
-    let log_level = env::args_os().nth(2).unwrap_or("info".to_string().into());
+    let log_level = env::args_os().nth(2).unwrap_or("INFO".to_string().into());
 
     // Initialize env logger, writes to stderr
     init_logger(Target::Stderr, log_level.to_string_lossy().into_owned());

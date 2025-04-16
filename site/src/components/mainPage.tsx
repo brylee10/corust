@@ -205,6 +205,7 @@ interface Snapshot {
   dest: number;
   document: string;
   // Opaque Rust struct that does not need to be accessed
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   cursorMap: any;
   stateId: number;
   runConfig: RunConfig;

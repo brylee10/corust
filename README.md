@@ -4,19 +4,12 @@ Corust ("Collaborative Rust") is a Rust collaborative code editor with code exec
 
 <img src="https://i.imgur.com/eV9rCUP.png" alt="Corust - A collaborative code editor" style="width: 1000px; border-radius: 15px;">
 
-**Note: This project is still under development.** Improvements include: support for a larger number of concurrent sessions, more Rust compilation modes (beyond a release mode executable) like the Rust Playground, and database-backed session persistence.
+Inspired by the [Rust Playground](https://play.rust-lang.org/) -- thanks to the prolific [Kirby](https://github.com/shepmaster)-- Corust allows users to quickly develop code snippets but now while collaborating live with others. 
 
-# Overview
-Inspired by the canonical [Rust Playground](https://play.rust-lang.org/) in the Rust ecosystem (thanks to the prolific [Kirby](https://github.com/shepmaster)), Corust allows users to quickly develop code snippets but now while collaborating live with others. 
+Corust supports live collaboration, the ability to compile in debug or release mode with stable, beta, or nightly versions of Rust, editor syntax highlighting, and the top ~200+ crates.
 
-Collaborative editing is enabled with operational transform (OT), a non blocking, eventually consistent, conflict resolution algorithm for text. It is implemented in this repository primarily for the author's education, but Rust has a well used [operational transform](https://docs.rs/operational-transform/latest/operational_transform/) crate. As [Marijn Haverbeke points out](https://marijnhaverbeke.nl/blog/collaborative-editing-cm.html), most theoretical work in collaborative editing is regarding truly distributed collaborative editing, but Corust is implemented more simply with a client server architecture. Using OT as a building block, Corust takes inspiration from steps outlined in [David Spiewak's overview](https://web.archive.org/web/20120107060932/http://www.codecommit.com/blog/java/understanding-and-applying-operational-transformation) of Novell Pulse's implementation to coordinate update synchronization and conflict resolution between clients and a server. Fun fact: in Corust's simulated editing unit tests, a "most formidable" test case is taken from the last example in David's aforementioned post.  
-
-## Components
-The Corust web backend uses a Warp webserver with the tokio asynchronous runtime. The frontend is built in React with Typescript and uses WebAssembly as the compile target to run the Rust client. The code editor uses [CodeMirror](https://codemirror.net/) made by Marijn Haverbeke, an indispensible contributor in open source code editing. The Corust UI attempts to mirror familiar designs from the Rust Playground. The CodeMirror React component detects certain text update operations and these are translated into Corust operations which are sent from client to server.
-
-Corust provides both live text and cursor updates, synchronized streaming of execution logs, live user presence tracking, and shareable session IDs which are persistent* (*SQL server to be added, currently still in memory).
-
-For testing text and cursor resolution, Corust implements a simulated message passing test framework (called a "network") in `rust/components/network`. This uses the foundational client and server building blocks which are reused in the production app (`rust/app`) but allows for precise timing and sequencing of both text and cursor updates between an arbitrary number of clients.
+## Architecture
+Corust uses a [React (NextJS)](https://nextjs.org/) frontend, an [Axum](https://docs.rs/axum/latest/axum/) webserver, and the [CodeMirror](https://codemirror.net/) code editor (made by Marijn Haverbeke, an indispensible open source contributor). The server archives state in a [SQLite](https://sqlite.org/index.html) database for easy self hosting. The Corust UI attempts to mirror familiar designs from the Rust Playground. Code is executed inside Docker containers which support the various Rust channels and crates. Collaboration and conflict resolution is enabled by the [operational transform (OT) algorithm](https://web.archive.org/web/20120107060932/http://www.codecommit.com/blog/java/understanding-and-applying-operational-transformation). In unit tests, the [Docker](https://www.docker.com/) execution environment is replaced with a Rust project initialized in the temporary file system. Corust has a simulated "network" for unit testing the client and server under different edit sequences for text and cursor validation. This client is compiled to [WebAssembly](https://www.rust-lang.org/what/wasm) and used by the frontend.
 
 ## Execution
 Corust allows one execution per session at a time and the current server code is the source of truth for the version of code that is executed. The execution logs of this run are streamed to all session participants. 
@@ -33,20 +26,61 @@ Where:
 - `--pids-limit 128`: Limits the number of process IDs (PIDs) that can be used by the container to 128. This limits the number of processes that can be run simultaneously within the container.
 - `--oom-score-adj 1000`: Adjusts the OOM (Out-Of-Memory) killer score for the container. A score of 1000 sets the container to the highest priority for being killed when the system is out of memory.
 
-The text output of a process is also limited to `STDOUT_ERR_BYTE_LIMIT` and concurrently executing containers is limited to `MAX_CONCURRENT_CONTAINERS`. The Corust sandbox has 200+ top crates, as taken from [lib.rs/std](https://lib.rs/std). Thank you to [Kornel](https://github.com/kornelski) for responding to a request to create [the Atom feed](https://lib.rs/std.atom) this project uses. This is populated one-off with `rust/populate_crates`.
+The text output of a process is also limited to `STDOUT_ERR_BYTE_LIMIT` and concurrently executing containers is limited to `MAX_CONCURRENT_CONTAINERS`. The Corust sandbox has ~200+ top crates, as taken from [lib.rs/std](https://lib.rs/std). Thank you to [Kornel](https://github.com/kornelski) for responding to a request to create [the Atom feed](https://lib.rs/std.atom) this project uses. This is populated one-off with `rust/populate_crates`.
 
-In unit tests, the Docker execution environment is replaced with a Rust project initialized in the temporary file system. 
+Much inspiration was taken from the Rust Playground's architecture for code execution.
 
 ## Deployment
-Currently, the Corust frontend is deployed on AWS Amplify and the server and code execution environment are run on AWS EC2 machine.  
+Currently, the Corust frontend is deployed on AWS Amplify and the server and code execution environment are run on an AWS EC2 machine. Follow the below to run Corust (the frontend (`site`) and backend (`rust`)) locally.
 
-## Running Locally
-You can run the frontend (`site`) and backend (`rust`) locally.
-
-The `site/Makefile` specifies commands to run to start the frontend and compile the required Rust components into WASM binaries. 
+### UI
+The `site/Makefile` specifies commands to run to start the frontend, compile the required Rust components into WASM binaries, install them as a node module, and start the NextJS development server. 
 ```
 # Front end
 cd site
-npm install --production
-make start
+make dev
 ```
+This will run the development build locally.
+
+Configure a `.env` file in `site` with the following environment variables to send requests to the server
+```
+NEXT_PUBLIC_WEBSOCKET_URI=ws://127.0.0.1:8000
+NEXT_PUBLIC_ENDPOINT_URI=http://127.0.0.1:8000
+```
+
+### Server
+```
+cd rust/app
+cargo run
+```
+The runtime environment can be configured via a `.env` file in the `rust` directory via `dotenv`.
+
+```
+# Front end host, used for CORS whitelisting
+FRONT_END_URI=http://localhost:3000
+# Address for the WS server
+WS_SERVER_URI=127.0.0.1
+# Server port
+PORT=8000
+# Log level for server
+RUST_LOG=INFO
+# Log level for docker container the server spawns
+DOCKER_LOG_LEVEL=INFO
+# Path to a SQLite database
+DB_PATH="/Users/bylee/code/corust/corust.db"
+```
+
+### Docker Containers
+You can build the docker containers from scratch via
+```
+cd deployment
+./build.sh
+```
+or you can fetch the currently used containers from Docker Hub
+```
+cd deployment
+./fetch.sh
+```
+
+## License
+Licensed under Apache License 2.0 or MIT at your selection
