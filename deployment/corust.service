@@ -3,9 +3,11 @@ Description=Corust
 
 [Service]
 Type=simple
-Environment=RUST_LOG=info
+Environment=RUST_LOG=INFO
 Environment=FRONT_END_URI=https://www.corust.dev
 Environment=WS_SERVER_URI=0.0.0.0
 Environment=PORT=8000
+Environment=DB_PATH="/home/${USER}/corust.db"
+Environment=DOCKER_LOG_LEVEL=INFO
 
 ExecStart=/home/ec2-user/corust/rust/target/release/main

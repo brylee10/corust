@@ -119,19 +119,19 @@ const TitleContainer = styled("div")({
   paddingTop: 4,
 });
 
-const TitleOpen = styled("div")<{ isNarrowScreen: boolean }>(
-  ({ isNarrowScreen }) => ({
-    fontFamily: "var(--font-family-sans)",
-    position: "absolute",
-    left: "50%",
-    transform: "translateX(-50%)",
-    paddingTop: 8,
-    color: "#C96556",
-    fontWeight: 600,
-    textAlign: isNarrowScreen ? undefined : "center",
-    flexGrow: isNarrowScreen ? undefined : 1,
-  })
-);
+const TitleOpen = styled("div", {
+  shouldForwardProp: (prop) => prop !== "isNarrowScreen",
+})<{ isNarrowScreen: boolean }>(({ isNarrowScreen }) => ({
+  fontFamily: "var(--font-family-sans)",
+  position: "absolute",
+  left: "50%",
+  transform: "translateX(-50%)",
+  paddingTop: 8,
+  color: "#C96556",
+  fontWeight: 600,
+  textAlign: isNarrowScreen ? undefined : "center",
+  flexGrow: isNarrowScreen ? undefined : 1,
+}));
 
 function RunOutputDisplay({
   runOutput,

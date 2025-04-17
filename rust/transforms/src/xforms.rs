@@ -308,7 +308,10 @@ impl TextOperation {
                 }
                 // Unreachable state
                 (_, None) | (None, _) => {
-                    debug_assert!(false, "This state should never be reachable. Incorrect input length is checked on function entry.");
+                    debug_assert!(
+                        false,
+                        "This state should never be reachable. Incorrect input length is checked on function entry."
+                    );
                     return Err(TextOperationError::IncorrectInputLength {
                         expected: self.input_length,
                         actual: other.input_length,
@@ -569,17 +572,14 @@ impl TextUpdate {
         Self { prev, next, text }
     }
 
-    #[inline]
     pub fn prev(&self) -> TextUpdateRange {
         self.prev
     }
 
-    #[inline]
     pub fn next(&self) -> TextUpdateRange {
         self.next
     }
 
-    #[inline]
     pub fn text(&self) -> String {
         self.text.clone()
     }
@@ -599,23 +599,19 @@ impl TextUpdateRange {
         Self { from, to }
     }
 
-    #[inline]
     pub fn from(&self) -> usize {
         self.from
     }
 
-    #[inline]
     pub fn to(&self) -> usize {
         self.to
     }
 
     // Length is in characters, not bytes
-    #[inline]
     pub fn len(&self) -> usize {
         self.to - self.from
     }
 
-    #[inline]
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }

@@ -588,10 +588,6 @@ function MainPage({ currUser }: MainPageProps) {
               try {
                 const clientResponse: ClientResponse | undefined =
                   clientRef.current.handle_server_message(serverMessage);
-                console.debug(
-                  "DEBUG: Received client response: ",
-                  clientResponse
-                );
 
                 // Always update code container. This should not change the code container if the update is an ack to a local operation.
                 setCodeContainerText({ code: clientRef.current.document() });

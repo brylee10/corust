@@ -9,11 +9,11 @@ build-ci-image:
 build-wasm:
 	@wasm-pack build --target bundler --release ../rust/components
 
-# Create optimized production build
-deploy: build-wasm link
+# Create the optimized production build
+build: build-wasm link
 	@npm run build
 
-# Run production build
+# Run optimized production build
 start: build-wasm link
 	@npm run start
 
@@ -21,6 +21,7 @@ start: build-wasm link
 dev: build-wasm link
 	@npm run dev
 
+# Install dependencies.
 # Instead of treating `corust_components` as a local npm package that is linked to `node_modules`, 
 # directly copy the contents into `node_modules`. CRA supported linking, but NextJS is having some trouble.
 link:

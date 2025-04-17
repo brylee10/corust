@@ -33,24 +33,27 @@ interface NarrowScreenProps {
   isNarrowScreen: boolean;
 }
 
-const ResizeHandle = styled(PanelResizeHandle)<NarrowScreenProps>(
-  ({ isNarrowScreen }) => ({
-    margin: isNarrowScreen ? "5px 0" : "0 5px",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    cursor: isNarrowScreen ? "row-resize" : "col-resize",
-    width: isNarrowScreen ? "100%" : "10px",
-    height: isNarrowScreen ? "10px" : "100%",
-    "&::before": {
-      content: isNarrowScreen ? '"⋯"' : '"⋮"',
-      fontSize: 14,
-      color: "#888",
-    },
-  })
-);
+// Do not forward custom prop, otherwise React throws "does not recognize prop on DOM element"
+const ResizeHandle = styled(PanelResizeHandle, {
+  shouldForwardProp: (prop) => prop !== "isNarrowScreen",
+})<NarrowScreenProps>(({ isNarrowScreen }) => ({
+  margin: isNarrowScreen ? "5px 0" : "0 5px",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  cursor: isNarrowScreen ? "row-resize" : "col-resize",
+  width: isNarrowScreen ? "100%" : "10px",
+  height: isNarrowScreen ? "10px" : "100%",
+  "&::before": {
+    content: isNarrowScreen ? '"⋯"' : '"⋮"',
+    fontSize: 14,
+    color: "#888",
+  },
+}));
 
-const StyledPanel = styled(Panel)<NarrowScreenProps>(({ isNarrowScreen }) => ({
+const StyledPanel = styled(Panel, {
+  shouldForwardProp: (prop) => prop !== "isNarrowScreen",
+})<NarrowScreenProps>(({ isNarrowScreen }) => ({
   height: isNarrowScreen ? "100%" : "auto",
   display: "flex",
 }));

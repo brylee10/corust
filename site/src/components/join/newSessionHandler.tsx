@@ -2,7 +2,6 @@
 
 import { useEffect } from "react";
 import { useRouter, usePathname } from "next/navigation";
-
 // Takes only the floating point part of the random number and converts it to base 36, representing digits 0-9 and letters a-z
 const generateSessionId = (length: number = 10) =>
   Math.random()

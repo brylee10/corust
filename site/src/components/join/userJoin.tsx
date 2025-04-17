@@ -11,12 +11,15 @@ import {
   UserStateDefined,
 } from "@/store/slices/userSlice";
 import { clientJoin } from "@/api/userJoin";
+import { useLightDark } from "@/components/hooks/useLightDark";
 
 function UserJoin() {
   const dispatch = useDispatch();
   const userState = useSelector(selectUserState);
   // Route params
   const params = useParams();
+
+  useLightDark();
 
   // Initialize the `Client` when the component mounts.
   useEffect(() => {

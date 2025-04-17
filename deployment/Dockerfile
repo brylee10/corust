@@ -48,7 +48,8 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 RUN apt update \
     && apt install -y curl git \
     && apt install -y --no-install-recommends ca-certificates gcc libc6-dev make \
-    && apt install -y tar
+    && apt install -y tar \
+    && apt install -y rsync
 
 # :: Install rust via the rustup script.
 #    This will install both the Rust compiler (rustc) and Cargo (cargo).

@@ -1,13 +1,29 @@
 ---
 version: 1
+# Uses a monorepo build specification
+# Follows: https://docs.aws.amazon.com/amplify/latest/userguide/monorepo-configuration.html
+applications:
+  - frontend:
+      # The path to use to run the build. 
+      # Amplify uses this path to locate build artifacts. Defaults to the monorepo app root, for example apps/app.
+      buildPath: site
+      phases:
+        preBuild:
+          commands:
+            # https://docs.npmjs.com/cli/v10/commands/npm-ci?v=true
+            - npm ci
+        build:
+          commands:
+            - make build
 
-frontend:
-  phases:
-    build:
-      commands:
-        - cd site && make deploy
-
-  artifacts:
-    baseDirectory: site/build
-    files:
-      - '**/*'
+      artifacts:
+        # baseDirectory attribute is the relative path of buildpath
+        # per: https://docs.aws.amazon.com/amplify/latest/userguide/monorepo-configuration.html#monorepo-yml-syntax
+        baseDirectory: .next
+        files:
+          - '**/*'
+    # The root, within the repository, that the application starts in. 
+    # This key must exist, and have the same value as the AMPLIFY_MONOREPO_APP_ROOT environment variable
+    # Amplify will throw: `CustomerError: Invalid monorepo spec, no matching appRoot found in build spec`
+    # if this does not match the environment variable
+    appRoot: site
