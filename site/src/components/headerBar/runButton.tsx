@@ -20,6 +20,7 @@ import MoreHorizIcon from "@mui/icons-material/MoreHoriz";
 import {
   CargoCommand,
   setCargoCommand,
+  setDefaultCommandOverridden,
 } from "@/store/slices/cargoCommandSlice";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "@/store/store";
@@ -176,6 +177,7 @@ function RunButton({
           sx={commonButtonStyle}
           onClick={() => {
             dispatch(setCargoCommand(cargoCommand));
+            dispatch(setDefaultCommandOverridden());
             sendRunnerConfig(cargoCommand);
             handleCargoCommandPopoverClose();
           }}

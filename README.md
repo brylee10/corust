@@ -2,7 +2,7 @@
 
 Corust ("Collaborative Rust") is a Rust collaborative code editor with code execution. Try it out at [corust.dev](https://www.corust.dev/) - it's more fun with friends!
 
-<img src="https://i.imgur.com/eV9rCUP.png" alt="Corust - A collaborative code editor" style="width: 1000px; border-radius: 15px;">
+<img src="https://i.imgur.com/9fBtN2z.png" alt="Corust - A collaborative code editor" style="width: 1000px; border-radius: 15px;">
 
 Inspired by the [Rust Playground](https://play.rust-lang.org/) -- thanks to the prolific [Kirby](https://github.com/shepmaster)-- Corust allows users to quickly develop code snippets but now while collaborating live with others. 
 
@@ -16,13 +16,13 @@ Corust allows one execution per session at a time and the current server code is
 
 Sandboxed execution occurs in Docker images (built with `rust/Dockerfile`). Execution is time limited (see `entrypoint.sh`) and Docker containers are run with the following command:
 ```
-docker run --cap-drop ALL --network none --memory 128m --memory-swap 128m --pids-limit 128 --oom-score-adj 1000 ...
+docker run --cap-drop ALL --network none --memory 512m --memory-swap 512m --pids-limit 128 --oom-score-adj 1000 ...
 ```
 Where:
 - `--cap-drop ALL`: Drops all Linux capabilities for the container, meaning the container runs with the minimum set of privileges (e.g. no socket creation, changing file ownership).
 - `--network none`: Disables all network interfaces except for the loopback device, effectively isolating the container from the network.
-- `--memory 128m`: Limits the container's memory usage to 512 MB. This means the container can use up to 128 MB of RAM.
-- `--memory-swap 128m`: Sets the total memory usage limit to 512 MB, which includes both physical RAM and swap space. 
+- `--memory 512m`: Limits the container's memory usage to 512 MB. This means the container can use up to 512 MB of RAM.
+- `--memory-swap 512m`: Sets the total memory usage limit to 512 MB, which includes both physical RAM and swap space. 
 - `--pids-limit 128`: Limits the number of process IDs (PIDs) that can be used by the container to 128. This limits the number of processes that can be run simultaneously within the container.
 - `--oom-score-adj 1000`: Adjusts the OOM (Out-Of-Memory) killer score for the container. A score of 1000 sets the container to the highest priority for being killed when the system is out of memory.
 

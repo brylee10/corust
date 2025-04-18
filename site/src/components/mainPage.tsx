@@ -54,7 +54,7 @@ import RunConfigButtons from "@/components/headerBar/runConfigButtons";
 import {
   CargoCommand,
   setCargoCommand,
-  setLastExecuteCargoCommand,
+  setDefaultCommandOverridden,
 } from "@/store/slices/cargoCommandSlice";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "@/store/store";
@@ -312,6 +312,9 @@ function MainPage({ currUser }: MainPageProps) {
   const cargoCommand = useSelector(
     (state: RootState) => state.cargoCommandSelector.command
   );
+  const defaultCommandOverridden = useSelector(
+    (state: RootState) => state.cargoCommandSelector.defaultOverridden
+  );
   const optLevel = useSelector((state: RootState) => state.optSelector.level);
   const channel = useSelector(
     (state: RootState) => state.channelSelector.channel
@@ -497,7 +500,6 @@ function MainPage({ currUser }: MainPageProps) {
         }
         // The container message
         const executeCommand = containerMsg[containerMessageType];
-        dispatch(setLastExecuteCargoCommand(executeCommand.cargoCommand));
         dispatch(setLastExecuteOptLevel(executeCommand.optLevel));
         dispatch(setLastExecuteChannel(executeCommand.channel));
         dispatch(setLastExecutionCode(executeCommand.code));
@@ -695,10 +697,6 @@ function MainPage({ currUser }: MainPageProps) {
               if (runConfigType === RunConfigType.RecentExecution) {
                 const lastExecutionCode = runConfigAction.code;
                 const executingUser = runConfigAction.username;
-                // Caches the last execution configuration for reference
-                dispatch(
-                  setLastExecuteCargoCommand(runConfigAction.cargoCommand)
-                );
                 dispatch(setLastExecuteOptLevel(runConfigAction.optLevel));
                 dispatch(setLastExecuteChannel(runConfigAction.channel));
                 dispatch(setLastExecutionCode(lastExecutionCode));
@@ -748,6 +746,7 @@ function MainPage({ currUser }: MainPageProps) {
               dispatch(setChannel(newChannel));
               dispatch(setOptLevel(newOptLevel));
               dispatch(setCargoCommand(newCargoCommand));
+              dispatch(setDefaultCommandOverridden());
 
               console.debug(
                 "Received run config message: ",
@@ -842,10 +841,28 @@ function MainPage({ currUser }: MainPageProps) {
   useEffect(() => {
     const isBinary = HAS_MAIN_FUNCTION_RE.test(codeContainerText.code);
     setTargetType(isBinary ? TargetType.Binary : TargetType.Library);
-    // Could also set the cargo command automatically if `fn main` is detected,
-    // but this is confusing in collaboration where users may inadvertently change
-    // for other collaborators.
-  }, [codeContainerText.code]);
+
+    // If default command has not been manually overridden, set with sensible default
+    // Note: This does cause scenarios where not all users will have the same
+    // cargo command button (particularly for late joiners). This occurs when a library
+    // crate becomes a binary crate or visa versa, and a command has manually been chosen.
+    // For existing users, this heuristic will be disabled, while new users it will be enabled
+    // until a command is chosen or run. This is ok since the command diff is only local to the user
+    // (i.e. does not affect shared code or execution)and will be synchronized once a user runs a command.
+    if (!defaultCommandOverridden) {
+      if (!isBinary) {
+        dispatch(setCargoCommand(CargoCommand.Build));
+      }
+      if (isBinary) {
+        dispatch(setCargoCommand(CargoCommand.Run));
+      }
+    }
+  }, [
+    codeContainerText.code,
+    cargoCommand,
+    dispatch,
+    defaultCommandOverridden,
+  ]);
 
   useEffect(() => {
     cargoCommandRef.current = cargoCommand;

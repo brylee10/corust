@@ -45,15 +45,6 @@ RUN curl https://sh.rustup.rs -sSf | sh -s -- \
     --component clippy \
     --component rust-src
 
-# Install the `runner` binary which copies user code into the container and runs it 
-COPY --chown=corust sandbox /sandbox
-# Copy `corust-types` dependency
-COPY --chown=corust types /types
-RUN cargo install --path /sandbox
-COPY --chown=corust entrypoint.sh /corust/tools/
-# Make the entrypoint script executable
-RUN chmod +x /corust/tools/entrypoint.sh
-
 # In this case the multi-stage docker build does not reduce image size because `toolchain` uses 
 # all prior images
 FROM toolchain
@@ -66,5 +57,14 @@ COPY --chown=corust populate_crates/Cargo.toml.sandbox /corust/Cargo.toml
 RUN cargo build --release
 RUN cargo build
 RUN rm src/*.rs
+
+# Install the `runner` binary which copies user code into the container and runs it 
+COPY --chown=corust sandbox /sandbox
+# Copy `corust-types` dependency
+COPY --chown=corust types /types
+RUN cargo install --path /sandbox
+COPY --chown=corust entrypoint.sh /corust/tools/
+# Make the entrypoint script executable
+RUN chmod +x /corust/tools/entrypoint.sh
 
 ENTRYPOINT ["/corust/tools/entrypoint.sh"]

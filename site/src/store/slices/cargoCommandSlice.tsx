@@ -13,27 +13,30 @@ enum CargoCommand {
 
 interface CargoCommandState {
   command: CargoCommand;
-  lastExecuteCommand: CargoCommand | null;
+  // Whether the default command was overridden by a user or collaborator
+  // Otherwise, use heuristics to select sensible default command
+  // (build for lib, run for bin)
+  defaultOverridden: boolean;
 }
 
 const cargoCommandSlice = createSlice({
   name: "cargoCommand",
   initialState: {
     command: CargoCommand.Run,
-    lastExecuteCommand: null,
+    defaultOverridden: false,
   } as CargoCommandState,
   reducers: {
     setCargoCommand: (state, action: PayloadAction<CargoCommand>) => {
       state.command = action.payload;
     },
-    setLastExecuteCargoCommand(state, action: PayloadAction<CargoCommand>) {
-      state.lastExecuteCommand = action.payload;
+    setDefaultCommandOverridden: (state) => {
+      state.defaultOverridden = true;
     },
   },
 });
 
 export { CargoCommand };
-export const { setCargoCommand, setLastExecuteCargoCommand } =
+export const { setCargoCommand, setDefaultCommandOverridden } =
   cargoCommandSlice.actions;
 export type { CargoCommandState };
 export default cargoCommandSlice.reducer;

@@ -209,11 +209,11 @@ mod docker_utils {
             .arg("--network")
             .arg("none")
             .arg("--memory")
-            .arg("128m")
+            .arg("512m")
             // Allow some memory to be swapped to disk
             // https://docs.docker.com/config/containers/resource_constraints/#--memory-swap-details
             .arg("--memory-swap")
-            .arg("128m")
+            .arg("512m")
             .arg("--pids-limit")
             .arg("128")
             // OOM kill priority for this container set to highest
