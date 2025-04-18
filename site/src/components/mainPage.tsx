@@ -454,14 +454,12 @@ function MainPage({ currUser }: MainPageProps) {
           break;
         case "StdoutErrTooLarge":
           runStatus = { ...runStatus, stdoutErrTooLarge: true };
-          // Only opens the output panel once if the output is too large
-          dispatch(setOutputTooLargeOpen());
           break;
       }
       console.debug("Updated run status", runStatus, runType, runStateUpdate);
       return runStatus;
     },
-    [dispatch]
+    []
   );
 
   // Updates editor, code output, and cargo command configuration state after
@@ -680,6 +678,13 @@ function MainPage({ currUser }: MainPageProps) {
                   prev
                 )
               );
+              // Only opens the output panel once if the output is too large
+              // This cannot be done in `updateRunStatus` since it is an updater function
+              // so it's called during render. `dispatch` causes a side effect and
+              // side effects are not allowed during render
+              if (serverRunStatus.runStateUpdate === "StdoutErrTooLarge") {
+                dispatch(setOutputTooLargeOpen());
+              }
               // A `RunStatus` message (particularly `RunStateUpdate` = `RunStarted`) indicates the start of a run,
               // so cargo output should be shown. A `RunStatus` message will precede any `Run` message, so toggling here
               // is sufficient and preferrable over toggling in the `Run` message handler.

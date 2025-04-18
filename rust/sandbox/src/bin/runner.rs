@@ -25,8 +25,9 @@ use tokio::sync::Mutex;
 use tokio::sync::mpsc::{self, Receiver, Sender};
 use tokio::task::JoinHandle;
 
-// Number of bytes to read from child stdout and stderr at a time
-const CHILD_PIPE_BUFFER_SIZE: usize = 1024;
+// Number of bytes to read from child stdout and stderr at a time as a multiple of page size
+const PAGE_SIZE: usize = 4096;
+const CHILD_PIPE_BUFFER_SIZE: usize = PAGE_SIZE * 2;
 
 const BINARY_OUTPUT: &str = "src/main.rs";
 const LIB_OUTPUT: &str = "src/lib.rs";
@@ -171,6 +172,9 @@ async fn run_command(mut command: Command, stdout_tx: Sender<ContainerResponse>)
     let child_stdout = child.stdout.take().context(StdoutCaptureSnafu)?;
     let child_stderr = child.stderr.take().context(StderrCaptureSnafu)?;
 
+    // Stdout, stderr, and exit code are repeatedly appended to this `ExecuteResponse`
+    // This means the total I/O could be quadratic in the size of the output, but the output
+    // size is capped
     let container_response = Arc::new(Mutex::new(ExecuteResponse {
         stdout: vec![],
         stderr: vec![],
@@ -191,7 +195,11 @@ async fn run_command(mut command: Command, stdout_tx: Sender<ContainerResponse>)
                         break;
                     }
                     n => {
-                        log::debug!("Read {} bytes from child stdout", n);
+                        log::debug!(
+                            "Read {} bytes from child stdout, string: {}",
+                            n,
+                            String::from_utf8_lossy(&buffer[..n])
+                        );
                         let mut response = container_response.lock().await;
                         response.stdout.extend(&buffer[..n]);
                         stdout_tx
@@ -218,8 +226,11 @@ async fn run_command(mut command: Command, stdout_tx: Sender<ContainerResponse>)
                         break;
                     }
                     n => {
-                        log::debug!("Read {} bytes from child stderr", n);
-                        log::debug!("Read string: {}", String::from_utf8_lossy(&buffer[..n]));
+                        log::debug!(
+                            "Read {} bytes from child stderr, string: {}",
+                            n,
+                            String::from_utf8_lossy(&buffer[..n])
+                        );
                         let mut response = container_response.lock().await;
                         response.stderr.extend(&buffer[..n]);
                         // Both cargo stderr and stdout are serialized to runner stdout
@@ -233,15 +244,6 @@ async fn run_command(mut command: Command, stdout_tx: Sender<ContainerResponse>)
             Ok(())
         }
     });
-
-    let exit_status = child.wait().await.context(WaitChildSnafu)?;
-    log::debug!("Child process exited with: {:?}", exit_status);
-    let mut response = container_response.lock().await;
-    response.exit_code = exit_status.code();
-    stdout_tx
-        .send(ContainerResponse::Execute(response.clone()))
-        .await
-        .context(SendResponseSnafu)?;
 
     let res = tokio::try_join!(stdout_handle, stderr_handle);
     match res {
@@ -259,6 +261,18 @@ async fn run_command(mut command: Command, stdout_tx: Sender<ContainerResponse>)
         }
     }
     log::debug!("Execute command finished handling");
+
+    let exit_status = child.wait().await.context(WaitChildSnafu)?;
+    log::debug!("Child process exited with: {:?}", exit_status);
+    {
+        // Limit scope of this lock
+        let mut response = container_response.lock().await;
+        response.exit_code = exit_status.code();
+        stdout_tx
+            .send(ContainerResponse::Execute(response.clone()))
+            .await
+            .context(SendResponseSnafu)?;
+    }
 
     Ok(())
 }

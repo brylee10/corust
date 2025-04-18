@@ -46,46 +46,14 @@ pub enum ContainerError {
     StdoutCapture,
     #[snafu(display("Failed to capture stderr"))]
     StderrCapture,
-    #[snafu(display("Bincode (de)serialization error: {}", source))]
-    Bincode { source: bincode::Error },
     #[snafu(display("Acquire sempahore error: {}", source))]
     AcquireSemaphore { source: tokio::sync::AcquireError },
-    #[snafu(display("Read from stdout error: {}", source))]
-    ReadStdout { source: std::io::Error },
-    #[snafu(display("Read from stderr error: {}", source))]
-    ReadStderr { source: std::io::Error },
     #[snafu(display(
         "Incorrect message length. Expected {} bytes, got {} bytes",
         expected,
         received
     ))]
     IncorrectMessageLength { expected: usize, received: usize },
-    #[snafu(display("Receive response error: {}", source))]
-    ReceiveResponse {
-        source: mpsc::error::SendError<ContainerResponse>,
-    },
-    #[snafu(display("Send message error: {}", source))]
-    SendMessage {
-        source: mpsc::error::SendError<ContainerMessage>,
-    },
-    #[snafu(display(
-        "Stdout too large. Max bytes {}, received {}",
-        max_bytes,
-        received_bytes
-    ))]
-    StdoutTooLarge {
-        max_bytes: usize,
-        received_bytes: usize,
-    },
-    #[snafu(display(
-        "Stderr too large. Max bytes {}, received {}",
-        max_bytes,
-        received_bytes
-    ))]
-    StderrTooLarge {
-        max_bytes: usize,
-        received_bytes: usize,
-    },
     #[snafu(display("Commander error: {}", source))]
     ContainerCommander { source: CommanderError },
     #[snafu(display("Join tasks error: {}", source))]
@@ -128,6 +96,10 @@ pub enum CommanderError {
     CommanderSendResponse {
         source: mpsc::error::SendError<ContainerResponse>,
     },
+    #[snafu(display("Join tasks error: {}", source))]
+    CommanderJoinTasks { source: JoinError },
+    #[snafu(display("Child io error: {}", source))]
+    ChildIo { source: ChildIoError },
 }
 
 type Result<T, E = ContainerError> = std::result::Result<T, E>;
@@ -180,7 +152,7 @@ impl Backend for DockerBackend {
 
         let mut cmd = docker_utils::sandboxed_docker_command();
         let container_name = docker_utils::container_name();
-        let image_name = format!("rust-{}", channel);
+        let image_name: String = format!("rust-{}", channel);
 
         cmd.args(["-a", "stdin", "-a", "stdout", "-a", "stderr"])
             // Keep stdin open
@@ -461,6 +433,9 @@ impl Commander {
                 .await
                 .context(CommanderSendResponseSnafu)?;
         }
+        log::debug!("App runner received EOF on child stdout");
+
+        self.join_tasks().await?;
 
         let exit_status = self.wait().await?;
         Ok(exit_status)
@@ -474,18 +449,18 @@ impl Commander {
     }
 
     /// Join tasks listening to child stdout and stderr
-    pub async fn join_tasks(&mut self) -> Result<(), ContainerError> {
+    pub async fn join_tasks(&mut self) -> Result<(), CommanderError> {
         // Join tasks listening to child stdout and stderr
         while let Some(e) = self.child_io.tasks.join_next().await {
             // Tasks only join after the `child.wait()`, which indicates the child
             // has finished running. Drop stdin to allow `child_stdin_rx` to terminate and for all child io tasks to
             // join, otherwise only stderr/stdout will finish.
             std::mem::swap(&mut self.child_io.child_stdin_tx, &mut None);
-            match e.context(JoinTasksSnafu)? {
+            match e.context(CommanderJoinTasksSnafu)? {
                 Ok(()) => {}
                 Err(e) => {
                     log::error!("Received container error: {:?}", e);
-                    return Err(e)?;
+                    return Err(CommanderError::ChildIo { source: e });
                 }
             }
         }
@@ -517,11 +492,49 @@ impl Commander {
     }
 }
 
+#[derive(Debug, Snafu)]
+pub enum ChildIoError {
+    #[snafu(display(
+        "Child process stdout too large: max bytes {}, received bytes {}",
+        max_bytes,
+        received_bytes
+    ))]
+    StdoutTooLarge {
+        max_bytes: usize,
+        received_bytes: usize,
+    },
+    #[snafu(display(
+        "Child process stderr too large: max bytes {}, received bytes {}",
+        max_bytes,
+        received_bytes
+    ))]
+    StderrTooLarge {
+        max_bytes: usize,
+        received_bytes: usize,
+    },
+    #[snafu(display("Send error: {}", source))]
+    SendError {
+        source: mpsc::error::SendError<ContainerResponse>,
+    },
+    #[snafu(display("Receive response error: {}", source))]
+    ReceiveResponse {
+        source: mpsc::error::SendError<ContainerResponse>,
+    },
+    #[snafu(display("Send message error: {}", source))]
+    SendMessage {
+        source: mpsc::error::SendError<ContainerMessage>,
+    },
+    #[snafu(display("Bincode (de)serialization error: {}", source))]
+    Bincode { source: bincode::Error },
+    #[snafu(display("Read from stderr error: {}", source))]
+    ReadStderr { source: std::io::Error },
+}
+
 // Communicates with a component (e.g. container) via serialized
 // [`ContainerMessage`]/[`ContainerResponse`] through stdin and stdout, respectively
 pub struct ChildIo {
     // Handles to tasks sending to stdin and receiving from stdout and stderr
-    pub tasks: JoinSet<Result<()>>,
+    pub tasks: JoinSet<Result<(), ChildIoError>>,
     // Send messages to component stdin
     // Option<T> so it can be taken out of the struct and manually dropped
     pub child_stdin_tx: Option<mpsc::Sender<ContainerMessage>>,
@@ -548,8 +561,8 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
             match &response {
                 ContainerResponse::Execute(ExecuteResponse { stdout, stderr, .. }) => {
                     if stdout.len() > STDOUT_ERR_BYTE_LIMIT {
-                        log::error!("stdout/stderr too large, killing container");
-                        return Err(ContainerError::StdoutTooLarge {
+                        log::error!("stdout too large, killing container");
+                        return Err(ChildIoError::StdoutTooLarge {
                             max_bytes: STDOUT_ERR_BYTE_LIMIT,
                             received_bytes: stdout.len(),
                         });
@@ -557,7 +570,7 @@ fn create_child_io(stdin: ChildStdin, stdout: ChildStdout, stderr: ChildStderr) 
 
                     if stderr.len() > STDOUT_ERR_BYTE_LIMIT {
                         log::error!("stderr too large, killing container");
-                        return Err(ContainerError::StderrTooLarge {
+                        return Err(ChildIoError::StderrTooLarge {
                             max_bytes: STDOUT_ERR_BYTE_LIMIT,
                             received_bytes: stderr.len(),
                         });

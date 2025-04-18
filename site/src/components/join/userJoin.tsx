@@ -2,9 +2,7 @@
 import { useEffect } from "react";
 import MainPage from "@/components/mainPage";
 import { useParams } from "next/navigation";
-import { Box, Typography } from "@mui/material";
 import { useDispatch, useSelector } from "react-redux";
-import Image from "next/image";
 import {
   selectUserState,
   setUserState,
@@ -12,6 +10,7 @@ import {
 } from "@/store/slices/userSlice";
 import { clientJoin } from "@/api/userJoin";
 import { useLightDark } from "@/components/hooks/useLightDark";
+import WaitingForSession from "./waiting";
 
 function UserJoin() {
   const dispatch = useDispatch();
@@ -53,25 +52,7 @@ function UserJoin() {
   return userState.userId !== undefined && userState.username !== undefined ? (
     <MainPage currUser={userState as UserStateDefined} />
   ) : (
-    <Box
-      sx={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100vh",
-      }}
-    >
-      <Typography variant="h6">Connecting to session...</Typography>
-      {/* No lazy loading to improve the largest contentful paint*/}
-      <Image
-        src="/ferris512.png"
-        alt="Ferris!"
-        width={100}
-        height={100}
-        priority
-      />
-    </Box>
+    <WaitingForSession />
   );
 }
 

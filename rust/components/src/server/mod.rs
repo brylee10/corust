@@ -139,7 +139,7 @@ impl Server {
             .get(&self.current_state_id)
             // This should never fail, `current_state_id` should always exists in the document map
             .ok_or(ServerError::StateIdNotFound(self.current_state_id))?;
-        log::debug!(
+        log::trace!(
             "Applying client operation. Incoming state_id: {state_id}, current state_id: {}",
             self.current_state_id
         );

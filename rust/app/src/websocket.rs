@@ -8,7 +8,7 @@ use axum::response::IntoResponse;
 use corust_components::network::{UserId, UserList};
 use corust_components::server::ServerError;
 use corust_components::{BroadcastLocalDocUpdate, RunConfig, RunConfigAction, RunConfigUpdate};
-use corust_sandbox::container::{ContainerError, DockerBackend};
+use corust_sandbox::container::{ChildIoError, CommanderError, DockerBackend};
 use corust_types::execution::CargoCommandType;
 use corust_types::{CodeOutputState, ContainerMessage, ExecuteCommand};
 use futures_util::SinkExt;
@@ -551,15 +551,21 @@ async fn handle_execution(
                     // Broadcast error back to client
                     ws_notify_concurrent_code_error(shared_ws_tx, run_type).await;
                 }
-                RunCodeError::ContainerError(ContainerError::StderrTooLarge { .. })
-                | RunCodeError::ContainerError(ContainerError::StdoutTooLarge { .. }) => {
+                RunCodeError::CommanderError(CommanderError::ChildIo {
+                    source: ChildIoError::StdoutTooLarge { .. },
+                })
+                | RunCodeError::CommanderError(CommanderError::ChildIo {
+                    source: ChildIoError::StderrTooLarge { .. },
+                }) => {
                     // TODO: Use the correct execute type or make runtype optional in the ws message
                     bcast_notify_output_size_error(bcast_tx.clone(), RunType::Execute).await;
                 }
                 RunCodeError::RunnerNonZeroExit(exit_status) => {
                     tracing::error!("Runner non-zero exit: {exit_status}");
                 }
-                _ => {}
+                e => {
+                    tracing::error!("Error running code: {e:?}");
+                }
             }
         }
     };

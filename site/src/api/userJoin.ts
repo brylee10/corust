@@ -28,9 +28,7 @@ export const clientJoin = async (
       method: "POST",
       headers: headers,
     });
-    console.log("Fetch URI", fetchUri);
     const text = await response.text();
-    console.log("text", text);
     const userJoinResponse: UserJoinResponse = JSON.parse(
       text,
       (key, value) => {
