@@ -10,5 +10,13 @@ members = [
     "types",  
 ]
 
+# WASM optimizations for code size
+# https://rustwasm.github.io/book/reference/code-size.html#optimizing-builds-for-code-size
+# 
+# /pkg dir size
+# Dev - ~1.4MB
+# Release - ~400MB 
 [profile.release]
-lto = true
+# opt-level = "s" # Optimize for size, not used in favor of performance
+lto = true 
+codegen-units = 1 # Reduce codegen units to improve optimization
